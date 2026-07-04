@@ -1,0 +1,15 @@
+# Dependencias (se reinstalan con npm install)
+node_modules/
+
+# Paquetes de despliegue de Lambda (se regeneran con zip)
+*.zip
+
+# Metadatos de Windows/WSL al copiar archivos
+*:Zone.Identifier
+
+# Archivo de diseño de referencia (bundle grande, no es código fuente propio)
+proyectos/quiz/data/
+
+# Por si alguna vez se crea un .env local
+.env
+.env.*

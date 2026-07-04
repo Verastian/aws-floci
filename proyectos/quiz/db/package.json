@@ -1,0 +1,10 @@
+{
+  "name": "quiz-db-seed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Script de una sola ejecucion para poblar la base de datos del Quiz desde los JSON en ../data",
+  "type": "commonjs",
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "quiz-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend estatico del Quiz. Tailwind se compila con 'npm run build:css' antes de subir a S3.",
+  "scripts": {
+    "build:css": "tailwindcss -i src/input.css -o style.css --minify",
+    "watch:css": "tailwindcss -i src/input.css -o style.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.2",
+    "tailwindcss": "^4.3.2"
+  }
+}

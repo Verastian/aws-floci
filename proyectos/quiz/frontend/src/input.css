@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Tailwind v4 escanea el codigo para saber que utilidades generar; se declaran
+   explicitamente las fuentes porque este proyecto no es un repo git (Tailwind
+   usa heuristicas basadas en git para auto-detectar archivos). */
+@source "../index.html";
+@source "../app.js";
+
+/* Por defecto Tailwind v4 activa dark: segun prefers-color-scheme (modo "sistema").
+   Como queremos un boton manual claro/oscuro/sistema, se redefine el variante dark
+   para que dependa de una clase .dark en <html> en vez de la media query directamente
+   (frontend/app.js decide cuando poner esa clase, incluyendo cuando el modo es "sistema"). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer components {
+  /* Barra de progreso animable por GSAP (necesita una clase fija para apuntarle) */
+  .progreso-relleno {
+    @apply h-full bg-gradient-to-r from-indigo-600 to-violet-600 rounded-full;
+  }
+}
