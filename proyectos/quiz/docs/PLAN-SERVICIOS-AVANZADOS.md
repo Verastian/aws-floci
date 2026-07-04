@@ -30,7 +30,7 @@
 **Riesgo de seguridad a resolver (no opcional):** Floci no tiene autenticación real. Si nginx reenvía el puerto 4566 completo al público, cualquiera tendría control total del "AWS" emulado (borrar buckets, leer la RDS, etc.).
 
 Checklist:
-- [ ] Confirmar dominio a usar: se puede usar el hostname que ya viene con el VPS (`srv1087366.hstgr.cloud`, ya resuelve en DNS público por defecto de Hostinger) como punto de partida, sin necesidad de comprar un dominio nuevo.
+- [ ] Confirmar dominio a usar: se puede usar el hostname que ya viene con el VPS (`<TU-HOSTNAME-VPS>`, ya resuelve en DNS público por defecto de Hostinger) como punto de partida, sin necesidad de comprar un dominio nuevo.
 - [ ] Configurar en `nginx-proxy-manager` un *proxy host* que reenvíe **solo** las rutas necesarias, no el puerto 4566 completo:
   - [ ] Un `location` para el *website endpoint* de S3 del frontend (con reescritura del header `Host` hacia `quiz-frontend.s3-website...`, ya que Floci enruta S3 por virtual-host).
   - [ ] Un `location` para el path exacto de la API Gateway (`/restapis/{api_id}/$default/_user_request_/*`).

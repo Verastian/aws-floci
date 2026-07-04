@@ -17,7 +17,7 @@ Decisiones ya confirmadas contigo:
 - **Acceso "local"**: túnel SSH (`ssh -L 4566:localhost:4566 ...`), el puerto 4566 **no** se expone a internet.
 - **Ejecución de comandos**: acceso SSH directo como `root` al VPS para que yo ejecute los pasos (con confirmación previa en pasos riesgosos).
 - **Arquitectura del Hello World**: Lambda + Function URL.
-- **Specs del VPS (confirmadas vía API de Hostinger)**: Hostinger KVM 4 — Ubuntu 24.04 con Docker ya instalado, 4 vCPU / 16 GB RAM, 200 GB disco, IP pública `147.93.10.106`, hostname `srv1087366.hstgr.cloud`, data center São Paulo, creado 2025-10-27. **Sobran recursos** para Lambda + RDS + ECS emulados simultáneamente vía Docker-out-of-Docker.
+- **Specs del VPS (confirmadas vía API de Hostinger)**: Hostinger KVM 4 — Ubuntu 24.04 con Docker ya instalado, 4 vCPU / 16 GB RAM, 200 GB disco, IP pública `<TU-IP-VPS>`, hostname `<TU-HOSTNAME-VPS>`, data center São Paulo, creado 2025-10-27. **Sobran recursos** para Lambda + RDS + ECS emulados simultáneamente vía Docker-out-of-Docker.
 - **El VPS ya está "en ejecución" con otros proyectos activos** (ver sección 3.10) — el plan se ajustó para no interferir con ellos y para reutilizar el `nginx-proxy-manager` ya desplegado cuando llegue la fase de exposición pública del Hello World/Quiz.
 - **Pendiente**: verificar conectividad SSH efectiva (hubo una alerta de cambio de host key, ver sección 3.11 — ya explicada y no bloqueante) y lenguaje de la Lambda del Hello World (Node.js o Python).
 
@@ -137,7 +137,7 @@ No hay ningún requerimiento tuyo que choque con lo documentado. **No se requier
 
 ### Fase 0 — Prerrequisitos (bloqueante, antes de tocar el VPS)
 
-- [x] Confirmar specs del VPS Hostinger: KVM 4, Ubuntu 24.04, 4 vCPU / 16 GB RAM, 200 GB disco, Docker ya instalado, IP `147.93.10.106` (`srv1087366.hstgr.cloud`). _(Verificado vía API oficial de Hostinger)_
+- [x] Confirmar specs del VPS Hostinger: KVM 4, Ubuntu 24.04, 4 vCPU / 16 GB RAM, 200 GB disco, Docker ya instalado, IP `<TU-IP-VPS>` (`<TU-HOSTNAME-VPS>`). _(Verificado vía API oficial de Hostinger)_
 - [x] Inventariar servicios ya corriendo en el VPS para no interferir (ver 3.10): n8n, nginx-proxy-manager, ollama, 2x postgres, restart-aws-labs.
 - [x] Confirmar que puerto 4566 y rangos de ECR/Lambda Runtime API están libres (sin colisión con lo existente).
 - [x] Investigar y explicar la alerta de cambio de host key SSH (ver 3.11) — resuelta, no bloqueante.
@@ -161,7 +161,7 @@ No hay ningún requerimiento tuyo que choque con lo documentado. **No se requier
 
 ### Fase 3 — Acceso "local" desde tu equipo
 
-- [x] Túnel SSH activo en segundo plano (`ssh -f -N -L 4566:localhost:4566 root@147.93.10.106`).
+- [x] Túnel SSH activo en segundo plano (`ssh -f -N -L 4566:localhost:4566 root@<TU-IP-VPS>`).
 - [x] AWS CLI v2 instalado (`aws-cli/2.35.15`).
 - [x] Perfil dedicado `floci` creado con credenciales dummy (`test`/`test`), región `us-east-1` y `endpoint_url = http://localhost:4566`.
 - [x] Prueba de humo exitosa: `aws s3 mb s3://floci-smoke-test --profile floci`, `aws s3 ls`, `aws dynamodb list-tables`, `aws lambda list-functions` — todos responden como en AWS real.
@@ -196,7 +196,7 @@ No hay ningún requerimiento tuyo que choque con lo documentado. **No se requier
 El túnel SSH es un proceso en segundo plano; si tu máquina o la sesión se reinician, vuelve a levantarlo con:
 
 ```bash
-ssh -f -N -L 4566:localhost:4566 root@147.93.10.106
+ssh -f -N -L 4566:localhost:4566 root@<TU-IP-VPS>
 ```
 
 Y usa el perfil ya configurado para cualquier comando de AWS CLI:

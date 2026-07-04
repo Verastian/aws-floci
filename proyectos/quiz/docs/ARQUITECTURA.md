@@ -102,7 +102,7 @@ proyectos/quiz/
 
 ## 8. Cómo volver a acceder (para tu día a día)
 
-Con el túnel SSH activo (`ssh -f -N -L 4566:localhost:4566 root@147.93.10.106`) y usando el perfil `floci` de AWS CLI:
+Con el túnel SSH activo (`ssh -f -N -L 4566:localhost:4566 root@<TU-IP-VPS>`) y usando el perfil `floci` de AWS CLI:
 
 - **Frontend**: `http://quiz-frontend.s3-website.us-east-1.localhost:4566/`
 - **API** (si necesitas probarla directo): `http://localhost:4566/restapis/f3744ef7e3/$default/_user_request_/categories` (o `/questions/{categoria}`, `/ranking`, `POST /submit`)
