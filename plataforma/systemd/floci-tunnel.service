@@ -1,0 +1,14 @@
+[Unit]
+Description=Tunel SSH persistente hacia Floci (puerto 4566 del VPS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=<RUTA-AL-REPO>/plataforma/scripts/floci-tunnel.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

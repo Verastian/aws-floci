@@ -10,6 +10,7 @@ node_modules/
 # Archivo de diseño de referencia (bundle grande, no es código fuente propio)
 proyectos/quiz/data/
 
-# Por si alguna vez se crea un .env local
+# Por si alguna vez se crea un .env local (las plantillas *.env.example sí se suben)
 .env
 .env.*
+!**/.env.example
