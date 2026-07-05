@@ -1,8 +1,15 @@
-// API_BASE apunta al invoke URL de la API Gateway HTTP API en Floci, a traves del
-// mismo tunel SSH (puerto 4566) que usamos para el resto de la nube emulada.
+// API_BASE cambia segun como se accedio al frontend, para soportar dos modos:
+// - Via tunel SSH (http://quiz-frontend.s3-website.us-east-1.localhost:4566/):
+//   la API vive en otro "virtual host" de Floci (localhost:4566 a secas), asi
+//   que hace falta la URL absoluta con ese Host explicito.
+// - Via el dominio publico (https://floci.devera.cloud/site/quiz-frontend/):
+//   nginx expone la API bajo el mismo origen en /restapis/..., asi que alcanza
+//   con una ruta relativa (ademas, al ser mismo origen, no hay problema de CORS).
 // Patron descubierto empiricamente: /restapis/{api_id}/{stage}/_user_request_/{ruta}
 const API_ID = "f3744ef7e3";
-const API_BASE = `http://localhost:4566/restapis/${API_ID}/$default/_user_request_`;
+const API_BASE = window.location.hostname.endsWith(".localhost")
+  ? `http://localhost:4566/restapis/${API_ID}/$default/_user_request_`
+  : `/restapis/${API_ID}/$default/_user_request_`;
 
 const NIVELES = [
   { n: 10, nombre: "Rápido", desc: "~3 min", color: "#6366f1" },

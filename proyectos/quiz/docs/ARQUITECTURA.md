@@ -194,3 +194,13 @@ El ejemplo incluía un sistema de **medallas/logros** ("MIS MEDALLAS", 0/7: Apro
 ### Confeti al finalizar
 
 - `celebrarConfeti()` en `app.js`: crea ~70 elementos `<div>` de colores (tomados de la misma paleta `COLORES` del selector de perfil) y los anima cayendo con GSAP (posición, rotación y opacidad aleatorias), removiendo el contenedor al terminar. Se dispara automáticamente al mostrar la pantalla de Resultado final, sin condicionarlo al puntaje (celebra terminar el quiz, no solo un buen resultado).
+
+## 14. Acceso público real, sin túnel SSH (2026-07-05)
+
+El Quiz dejó de depender del túnel SSH para que **otras personas** lo jueguen. Ahora es accesible con HTTPS real en `https://floci.devera.cloud/site/quiz-frontend/` (API en `https://floci.devera.cloud/restapis/f3744ef7e3/$default/_user_request_/...`). Detalle técnico completo, incluyendo el diseño genérico elegido (sirve para cualquier futuro servicio S3+API Gateway, no solo el Quiz) y los archivos involucrados: [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada) — la documentación de servicios avanzados vive en ese proyecto (fork creado para experimentar sin riesgo sobre este Quiz), no aquí.
+
+Cambio de código asociado: `frontend/app.js` — `API_BASE` ahora se elige en tiempo de ejecución según el hostname desde el que se sirve la página (URL absoluta con `Host` explícito si es acceso por túnel `*.localhost`, ruta relativa de mismo origen si es el dominio público), para que ambos modos de acceso sigan funcionando.
+
+El túnel SSH (`floci-tunnel.service`) **sigue siendo necesario** para todo lo administrativo (desplegar Lambdas nuevas, crear buckets, correr `aws cli`) — eso nunca se expuso públicamente, a propósito, porque Floci no tiene autenticación real.
+
+De paso se encontró y corrigió un problema preexistente no relacionado: la imagen `public.ecr.aws/lambda/nodejs:22` había desaparecido del caché de Docker del VPS, causando que **todas** las Lambdas devolvieran 502 (`Lambda.InitError: No such image`) incluso por el túnel. Se resolvió con `docker pull` de esa imagen en el VPS.
