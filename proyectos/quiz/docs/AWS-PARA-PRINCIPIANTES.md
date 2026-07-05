@@ -35,7 +35,9 @@ Todo lo que sigue en este documento es, en el fondo, **una forma específica de 
 
 AWS ofrece decenas de servicios, y al principio es fácil perderse en los nombres. Una forma de recordarlos es pensar en un restaurante:
 
-**Diagrama editable en Lucid**: [Analogía del restaurante](https://lucid.app/lucidchart/07512a7e-3405-453d-aa65-d28a18056de3/edit)
+![Analogía del restaurante](./imgs/AWS-FLOCI%20-%20Analogia%20del%20restaurante.png)
+
+Diagrama editable en Lucid: [Analogía del restaurante](https://lucid.app/lucidchart/07512a7e-3405-453d-aa65-d28a18056de3/edit)
 
 | En el restaurante | En AWS | Rol en el Quiz |
 |---|---|---|

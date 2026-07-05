@@ -51,7 +51,11 @@ La mitigación: nginx debe reenviar **solo** las rutas exactas que la aplicació
 
 Cualquier otra ruta (por ejemplo `https://floci.devera.cloud/` a secas, o intentar pegarle a la API de gestión de Lambda/IAM/CloudFormation) cae en un destino "trampa" que nunca responde, y nginx devuelve `502` — **nunca** llega a Floci. Así se cumple la regla de la sección anterior: se expone el patrón de *lo que uno mismo decide publicar* (un sitio estático, una API con rutas propias), nunca el puerto 4566 completo ni las APIs de administración de AWS.
 
-Diagrama de secuencia completo (navegador → nginx → Floci → API Gateway → Lambda → RDS), editable en Lucid: [AWS-FLOCI - Flujo de acceso público al Quiz](https://lucid.app/lucidchart/0c742525-02b1-4980-8a29-a010995ccc82/edit).
+Diagrama de secuencia completo (navegador → nginx → Floci → API Gateway → Lambda → RDS):
+
+![Flujo de acceso público al Quiz](./imgs/AWS-FLOCI%20-%20Flujo%20de%20acceso%20publico%20al%20Quiz.png)
+
+Editable en Lucid: [AWS-FLOCI - Flujo de acceso público al Quiz](https://lucid.app/lucidchart/0c742525-02b1-4980-8a29-a010995ccc82/edit).
 
 **Piezas involucradas:**
 

@@ -97,6 +97,8 @@ Resumen del flujo: tu navegador (con el túnel SSH activo) carga el frontend est
 
 El diagrama de arriba es fiel a **Floci**, pero no muestra algo que sí existe en AWS real: cada cuenta tiene **regiones** (ej. `us-east-1`), cada región tiene varias **Availability Zones** físicamente separadas (para tolerar que una se caiga sin afectar a las demás), y los recursos "de red privada" (Lambda con acceso a RDS, la propia RDS) viven dentro de una **VPC** con subredes públicas/privadas — nada de esto es visible al trabajar contra Floci, porque Floci no emula la capa de red, solo el comportamiento de cada servicio.
 
+![Arquitectura AWS real: VPC, Availability Zones, Region](./imgs/AWS-FLOCI%20-%20Arquitectura%20AWS%20real%20v2.png)
+
 Diagrama editable en Lucid: [AWS-FLOCI - Arquitectura AWS real v2](https://lucid.app/lucidchart/c4f12314-8380-4842-9325-4508233b6a52/edit)
 
 Ideas clave que este segundo diagrama agrega sobre el primero:
@@ -253,7 +255,11 @@ proceso ssh en TU máquina  ── canal SSH cifrado ──►  proceso sshd en 
                                                     localhost:4566 del VPS (Floci)
 ```
 
-Versión detallada (diagrama de secuencia, editable en Lucid): [AWS-FLOCI - Flujo del túnel SSH](https://lucid.app/lucidchart/ccd16e5b-c8b2-4bad-b9f7-81f526aa4931/edit).
+Versión detallada (diagrama de secuencia):
+
+![Flujo del túnel SSH](./imgs/AWS-FLOCI%20-%20Flujo%20del%20tunel%20SSH.png)
+
+Editable en Lucid: [AWS-FLOCI - Flujo del túnel SSH](https://lucid.app/lucidchart/ccd16e5b-c8b2-4bad-b9f7-81f526aa4931/edit).
 
 El punto clave: **no es que el VPS abra el puerto 4566 al mundo** — es que tu propia máquina finge tener ese puerto abierto localmente, y todo viaja disfrazado dentro de la sesión SSH. Para que eso funcione tiene que existir, en algún lugar, un proceso `ssh` con esa sesión abierta. Antes, ese "algún lugar" era una terminal que vos abrías a mano; ahora es un servicio de `systemd` — pero en los dos casos, **el proceso vive en tu equipo**, no en el VPS.
 
