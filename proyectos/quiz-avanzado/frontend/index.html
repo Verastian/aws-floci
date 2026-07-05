@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reto Quiz — AWS Cloud Practitioner</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script>
+  // Se aplica ANTES de pintar la pagina, para evitar un parpadeo de tema claro
+  // antes de que app.js (cargado al final) alcance a corregirlo.
+  (function () {
+    var modo = localStorage.getItem("quiz-theme") || "system";
+    var prefiereOscuro = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var oscuro = modo === "dark" || (modo === "system" && prefiereOscuro);
+    if (oscuro) document.documentElement.classList.add("dark");
+  })();
+</script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+<button id="btn-tema" type="button" aria-label="Cambiar tema" title="Cambiar tema"
+  class="fixed top-4 right-4 z-40 w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-lg">
+  ☀️
+</button>
+<div id="app" class="max-w-xl mx-auto px-4 py-10">
+  <main id="screen-root">
+    <p class="text-slate-400 text-center py-10">Cargando...</p>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
