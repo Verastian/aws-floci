@@ -19,7 +19,9 @@
 
 Antes de hablar de AWS, hay una idea que es la base de **cualquier** aplicación en internet — un banco, una red social, un quiz — y que no depende de ninguna nube en particular:
 
-**Diagrama editable en Lucid**: [Modelo mental: Cliente, Servidor, Base de datos](https://lucid.app/lucidchart/c864bbdb-5ed0-46de-be1b-a591d34d8c6e/edit)
+![Modelo mental: Cliente, Servidor, Base de datos](./imgs/AWS-FLOCI%20-%20Modelo%20mental%20cliente%20servidor%20base%20de%20datos.png)
+
+Diagrama editable en Lucid: [Modelo mental: Cliente, Servidor, Base de datos](https://lucid.app/lucidchart/c864bbdb-5ed0-46de-be1b-a591d34d8c6e/edit)
 
 - **Cliente**: el programa que vos usás directamente — tu navegador, la app del celular. No hace el trabajo pesado, solo pide cosas y muestra resultados.
 - **Servidor**: la computadora (o programa) que recibe el pedido, decide qué hacer, y responde. Es el "cerebro" de la operación.
