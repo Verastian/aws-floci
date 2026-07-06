@@ -165,7 +165,7 @@ No hay ningún requerimiento tuyo que choque con lo documentado. **No se requier
 - [x] AWS CLI v2 instalado (`aws-cli/2.35.15`).
 - [x] Perfil dedicado `floci` creado con credenciales dummy (`test`/`test`), región `us-east-1` y `endpoint_url = http://localhost:4566`.
 - [x] Prueba de humo exitosa: `aws s3 mb s3://floci-smoke-test --profile floci`, `aws s3 ls`, `aws dynamodb list-tables`, `aws lambda list-functions` — todos responden como en AWS real.
-- [x] **(2026-07-04) Túnel convertido en servicio persistente**: el `ssh -f -N` manual se caía cada vez que se cerraba la sesión/se reiniciaba el equipo (causó una caída real del Quiz, ver `proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §5), sin que el contenedor de Floci en el VPS se viera afectado. Se reemplazó por `autossh` + una unidad de `systemd` (`Restart=always`) que reconecta solo ante cortes de red o caídas del proceso. Configuración: `plataforma/.env` (IP real del VPS y demás valores, **no versionado**, plantilla en `plataforma/.env.example`), `plataforma/scripts/floci-tunnel.sh` y `plataforma/systemd/floci-tunnel.service`. Probado matando el proceso ssh manualmente: `systemd` lo relanzó solo en ~5 segundos.
+- [x] **(2026-07-04) Túnel convertido en servicio persistente**: el `ssh -f -N` manual se caía cada vez que se cerraba la sesión/se reiniciaba el equipo (causó una caída real del Quiz, ver `proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2), sin que el contenedor de Floci en el VPS se viera afectado. Se reemplazó por `autossh` + una unidad de `systemd` (`Restart=always`) que reconecta solo ante cortes de red o caídas del proceso. Configuración: `plataforma/.env` (IP real del VPS y demás valores, **no versionado**, plantilla en `plataforma/.env.example`), `plataforma/scripts/floci-tunnel.sh` y `plataforma/systemd/floci-tunnel.service`. Probado matando el proceso ssh manualmente: `systemd` lo relanzó solo en ~5 segundos.
 
 ### Fase 4 — Hello World (Lambda + Function URL) — COMPLETADA
 
@@ -201,7 +201,7 @@ systemctl status floci-tunnel.service
 curl http://localhost:4566/_localstack/health
 ```
 
-Si por algún motivo el servicio no está corriendo (por ejemplo, en un equipo nuevo donde todavía no se instaló, o en WSL si la instancia estuvo completamente apagada — ver el límite conocido en `proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §5.4), se puede levantar el túnel manualmente como antes:
+Si por algún motivo el servicio no está corriendo (por ejemplo, en un equipo nuevo donde todavía no se instaló, o en WSL si la instancia estuvo completamente apagada — ver el límite conocido en `proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2.4), se puede levantar el túnel manualmente como antes:
 
 ```bash
 ssh -f -N -L 4566:localhost:4566 root@<TU-IP-VPS>

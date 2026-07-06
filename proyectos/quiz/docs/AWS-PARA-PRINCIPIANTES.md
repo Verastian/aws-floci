@@ -21,8 +21,6 @@ Antes de hablar de AWS, hay una idea que es la base de **cualquier** aplicación
 
 ![Modelo mental: Cliente, Servidor, Base de datos](./imgs/AWS-FLOCI%20-%20Modelo%20mental%20cliente%20servidor%20base%20de%20datos.png)
 
-Diagrama editable en Lucid: [Modelo mental: Cliente, Servidor, Base de datos](https://lucid.app/lucidchart/c864bbdb-5ed0-46de-be1b-a591d34d8c6e/edit)
-
 - **Cliente**: el programa que vos usás directamente — tu navegador, la app del celular. No hace el trabajo pesado, solo pide cosas y muestra resultados.
 - **Servidor**: la computadora (o programa) que recibe el pedido, decide qué hacer, y responde. Es el "cerebro" de la operación.
 - **Base de datos**: donde se guarda todo de forma permanente — usuarios, puntajes, productos. El servidor le pregunta y le pide guardar cosas; el cliente nunca le habla directo.
@@ -36,8 +34,6 @@ Todo lo que sigue en este documento es, en el fondo, **una forma específica de 
 AWS ofrece decenas de servicios, y al principio es fácil perderse en los nombres. Una forma de recordarlos es pensar en un restaurante:
 
 ![Analogía del restaurante](./imgs/AWS-FLOCI%20-%20Analogia%20del%20restaurante.png)
-
-Diagrama editable en Lucid: [Analogía del restaurante](https://lucid.app/lucidchart/07512a7e-3405-453d-aa65-d28a18056de3/edit)
 
 | En el restaurante | En AWS | Rol en el Quiz |
 |---|---|---|

@@ -55,8 +55,6 @@ Diagrama de secuencia completo (navegador → nginx → Floci → API Gateway �
 
 ![Flujo de acceso público al Quiz](./imgs/AWS-FLOCI%20-%20Flujo%20de%20acceso%20publico%20al%20Quiz.png)
 
-Editable en Lucid: [AWS-FLOCI - Flujo de acceso público al Quiz](https://lucid.app/lucidchart/0c742525-02b1-4980-8a29-a010995ccc82/edit).
-
 **Piezas involucradas:**
 
 - **DNS**: `floci.devera.cloud` (subdominio nuevo sobre un dominio propio ya existente, `devera.cloud`) apunta por A record a la IP del VPS.
@@ -73,7 +71,7 @@ Editable en Lucid: [AWS-FLOCI - Flujo de acceso público al Quiz](https://lucid.
   ```
 - **Frontend**: `frontend/app.js` elige `API_BASE` según el hostname (`window.location.hostname.endsWith(".localhost")` → modo túnel con URL absoluta; si no → ruta relativa, porque frontend y API quedan bajo el mismo origen público, lo que además elimina CORS de raíz para el acceso público).
 
-**Qué NO cambió**: el túnel SSH (`floci-tunnel.service`, ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §5](../../quiz/docs/GUIA-PASO-A-PASO.md#5-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca)) sigue siendo necesario para todo lo administrativo — desplegar una Lambda nueva, crear un bucket, correr `aws` en general. Lo único que dejó de depender del túnel es que **otras personas jueguen el Quiz** (o usen cualquier futuro servicio publicado con el mismo patrón).
+**Qué NO cambió**: el túnel SSH (`floci-tunnel.service`, ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2](../../quiz/docs/GUIA-PASO-A-PASO.md#2-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca)) sigue siendo necesario para todo lo administrativo — desplegar una Lambda nueva, crear un bucket, correr `aws` en general. Lo único que dejó de depender del túnel es que **otras personas jueguen el Quiz** (o usen cualquier futuro servicio publicado con el mismo patrón).
 
 **Incidente encontrado y resuelto de paso**: al probar el flujo completo, `/restapis/.../categories` devolvía `502` incluso por el túnel (o sea, un problema preexistente, no causado por este cambio). La causa: la imagen Docker `public.ecr.aws/lambda/nodejs:22` (la que Floci usa para ejecutar cualquier Lambda Node.js 22) había desaparecido del caché de Docker del VPS — `docker lambda invoke` fallaba con `Lambda.InitError: No such image`. Se resolvió con `docker pull public.ecr.aws/lambda/nodejs:22` en el VPS. Si esto vuelve a pasar (por ejemplo, tras una limpieza de imágenes con `docker image prune`), el síntoma es el mismo: cualquier Lambda Node 22 devuelve 502/`Lambda.InitError`, y el arreglo es el mismo `docker pull`.
 

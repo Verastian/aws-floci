@@ -1,0 +1,20 @@
+direction: right
+
+cliente: "Cliente\n(tu navegador o celular)" {
+  style.fill: "#dbeafe"
+}
+servidor: "Servidor\n(atiende el pedido)" {
+  style.fill: "#fef3c7"
+}
+bd: "Base de datos\n(guarda la informacion permanente)" {
+  style.fill: "#ede9fe"
+}
+
+cliente -> servidor: "1. Pide algo (ej: ver mi puntaje)"
+servidor -> bd: "2. Consulta o guarda datos"
+bd -> servidor: "3. Devuelve los datos" {
+  style.stroke-dash: 4
+}
+servidor -> cliente: "4. Responde (ej: tu puntaje es 450)" {
+  style.stroke-dash: 4
+}

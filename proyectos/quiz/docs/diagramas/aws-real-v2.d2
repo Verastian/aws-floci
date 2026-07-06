@@ -1,0 +1,86 @@
+usuario: "Usuario\n(navegador)" {
+  style.font-size: 22
+}
+
+cloud: "Amazon Cloud" {
+  style.stroke: "#242f3e"
+  style.fill: "#ffffff"
+
+  region: "Region (us-east-1)" {
+    style.stroke-dash: 4
+    style.stroke: "#0d9488"
+
+    route53: "Amazon Route 53" {
+      icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-Route-53_light-bg.svg
+      shape: image
+    }
+    s3: "Amazon S3\n(en produccion real: detras de\nCloudFront + bucket S3 privado)" {
+      icon: https://icons.terrastruct.com/aws%2FStorage%2FAmazon-Simple-Storage-Service-S3_Bucket_light-bg.svg
+      shape: image
+    }
+    apigw: "Amazon API Gateway" {
+      icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-API-Gateway_light-bg.svg
+      shape: image
+    }
+
+    vpc: "Virtual private cloud (VPC)" {
+      style.stroke: "#8b5cf6"
+
+      igw: "Internet gateway" {
+        icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-VPC_Internet-Gateway_light-bg.svg
+        shape: image
+      }
+
+      az1: "Availability Zone (us-east-1a)" {
+        style.stroke-dash: 4
+        style.stroke: "#0d9488"
+
+        public_subnet: "Public subnet" {
+          style.stroke: "#65a30d"
+          nat: "NAT gateway" {
+            icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-VPC_NAT-Gateway_light-bg.svg
+            shape: image
+          }
+        }
+        private_subnet: "Private subnet" {
+          style.stroke: "#0891b2"
+          lambda: "AWS Lambda" {
+            icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+            shape: image
+          }
+          rds: "Amazon RDS\n(primaria)" {
+            icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+            shape: image
+          }
+          lambda -> rds: "SQL"
+        }
+      }
+
+      az2: "Availability Zone (us-east-1b)" {
+        style.stroke-dash: 4
+        style.stroke: "#0d9488"
+
+        private_subnet2: "Private subnet" {
+          style.stroke: "#0891b2"
+          rds_standby: "Amazon RDS\n(standby)" {
+            icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+            shape: image
+          }
+        }
+      }
+
+      az1.private_subnet.rds -> az2.private_subnet2.rds_standby: "replicacion sincrona (Multi-AZ)" {
+        style.stroke-dash: 4
+        style.stroke: "#a855f7"
+      }
+      az1.public_subnet.nat -> igw: "trafico saliente" {
+        style.stroke-dash: 4
+      }
+    }
+  }
+}
+
+usuario -> cloud.region.route53: "1. Resuelve DNS"
+usuario -> cloud.region.s3: "2. Descarga sitio estatico"
+usuario -> cloud.region.apigw: "3. Llama a la API (fetch)"
+cloud.region.apigw -> cloud.region.vpc.az1.private_subnet.lambda: "invoca"

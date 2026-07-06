@@ -38,7 +38,7 @@ using `autossh` with `Restart=always`, so it self-heals on network drops or cras
 needs to be started manually. Its config (real VPS IP, user, ports) lives in `plataforma/.env`,
 which is **git-ignored**; `plataforma/.env.example` is the committed template. If the whole stack
 looks "down" but `docker ps` on the VPS shows Floci healthy, check `systemctl status
-floci-tunnel.service` first — see `proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §5 for the full
+floci-tunnel.service` first — see `proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2 for the full
 diagnostic flow.
 
 ## Repository structure and conventions
@@ -61,8 +61,9 @@ AWS-FLOCI/
   committed. This does **not** apply to the public domain (`floci.devera.cloud`) — that one is
   meant to be shared, so it's written out in full wherever relevant.
 - **No cross-duplicated docs between `quiz/` and `quiz-avanzado/`**: `quiz/docs/` has only
-  `ARQUITECTURA.md`, `GUIA-PASO-A-PASO.md`, and `AWS-PARA-PRINCIPIANTES.md` (the app itself — same
-  code in both projects); `quiz-avanzado/docs/` has only `PLAN-SERVICIOS-AVANZADOS.md` and
+  `ARQUITECTURA.md`, `GUIA-LOCAL-DOCKER.md`, `GUIA-PASO-A-PASO.md`, and `AWS-PARA-PRINCIPIANTES.md`
+  (the app itself — same code in both projects); `quiz-avanzado/docs/` has only
+  `PLAN-SERVICIOS-AVANZADOS.md` and
   `GUIA-SERVICIOS-AVANZADOS.md` (all advanced-services work, both planning and technical detail,
   even the Fase 1/nginx work that historically ran against `quiz/`'s resources — it's documented
   once, in the fork, not duplicated). If a future change seems to need touching the same fact in
@@ -112,18 +113,25 @@ the local guide's concepts and doesn't repeat them.
 ### `proyectos/quiz/`
 **Public URL (no tunnel needed): `https://floci.devera.cloud/site/quiz-frontend/`.** If *that*
 appears down, the SSH tunnel is irrelevant to it — check Floci/RDS/Lambda health on the VPS
-directly (see the diagnostic table in `docs/GUIA-PASO-A-PASO.md` §5.3, and note the
-`Lambda.InitError: No such image` gotcha below). The tunnel (`docs/GUIA-PASO-A-PASO.md` §5) only
+directly (see the diagnostic table in `docs/GUIA-PASO-A-PASO.md` §2.3, and note the
+`Lambda.InitError: No such image` gotcha below). The tunnel (`docs/GUIA-PASO-A-PASO.md` §2) only
 matters for *your own* administrative access (deploying, seeding data, etc.) — it can be down
 while the public quiz is fine, and vice versa.
+
+Two guides, split by audience, same pattern as `hello-world`: `docs/GUIA-LOCAL-DOCKER.md` is the
+primary one (100% Docker local, reuses the same local Floci from hello-world's guide, all the
+concept explanations + the "Floci vs. AWS real" comparison table + the AWS-real VPC/Region/AZ
+diagram) and `docs/GUIA-PASO-A-PASO.md` covers only the VPS-specific delta (SSH tunnel, day-to-day
+diagnostics) — it assumes the local guide's concepts and doesn't repeat them.
 
 A tech quiz app (AWS Cloud Practitioner questions today; Python/Linux categories exist but have no
 questions yet). Full history and rationale: `docs/ARQUITECTURA.md` (architecture decisions,
 findings, changelog by round) and `docs/GUIA-PASO-A-PASO.md` (concrete replicable commands).
 `docs/AWS-PARA-PRINCIPIANTES.md` is a third, deliberately different kind of doc — no Floci/Docker/
 VPS at all, just AWS concepts (S3, API Gateway, Lambda, RDS, Route 53, VPC/Region/AZ) explained
-with analogies and Lucid diagrams for someone new to AWS; keep it that way when extending it, don't
-let implementation detail leak in. This project intentionally has **no** advanced-services docs (`PLAN`/`GUIA-SERVICIOS-AVANZADOS.md`) —
+with analogies for someone new to AWS (diagrams are D2, except the AWS-real VPC/Region/AZ one,
+which keeps a Lucid link per the diagram convention below); keep it that way when extending it,
+don't let implementation detail leak in. This project intentionally has **no** advanced-services docs (`PLAN`/`GUIA-SERVICIOS-AVANZADOS.md`) —
 those live entirely in `proyectos/quiz-avanzado/docs/`, including Fase 1 (public exposure via
 nginx), even though Fase 1 was implemented against *this* project's resources (`quiz-frontend`,
 `f3744ef7e3`) — see the fork's docs for that history, to avoid the same facts drifting out of sync
@@ -237,8 +245,9 @@ id `a7f3682d91`), and its own bucket (`quiz-avanzado-frontend`). It exists so th
 work (Secrets Manager, KMS, CloudTrail, SNS, EventBridge, WAF, CloudFormation, Cognito) can break
 things experimentally without touching the original, which is public and in real use.
 
-This project has **no** `ARQUITECTURA.md` / `GUIA-PASO-A-PASO.md` of its own — the app's design is
-identical to `proyectos/quiz/`, so those docs are the ones to read for that. What lives only here:
+This project has **no** `ARQUITECTURA.md` / `GUIA-LOCAL-DOCKER.md` / `GUIA-PASO-A-PASO.md` of its
+own — the app's design is identical to `proyectos/quiz/`, so those docs are the ones to read for
+that. What lives only here:
 `docs/PLAN-SERVICIOS-AVANZADOS.md` (with a "Contexto de este fork" section covering exactly what
 differs: resource names, how data was copied, the fork's own history) and
 `docs/GUIA-SERVICIOS-AVANZADOS.md` (all advanced-services concepts + implementation, including

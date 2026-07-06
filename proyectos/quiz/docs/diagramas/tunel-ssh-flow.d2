@@ -1,0 +1,13 @@
+shape: sequence_diagram
+
+app: "Tu app\n(curl / aws cli / navegador)"
+ssh: "Proceso ssh\n(tu equipo, floci-tunnel.service)"
+sshd: "sshd (en el VPS)"
+floci: "Floci (127.0.0.1:4566 del VPS)"
+
+app -> ssh: "conecta a 127.0.0.1:4566 (en tu propia maquina)"
+ssh -> sshd: "reenvia dentro del canal SSH cifrado"
+sshd -> floci: "conecta a localhost:4566 (del propio VPS)"
+floci -> sshd: "respuesta (JSON, HTML, etc.)"
+sshd -> ssh: "reenvia de vuelta por el mismo canal cifrado"
+ssh -> app: "respuesta en 127.0.0.1:4566 (local)"

@@ -1,0 +1,71 @@
+stage_title: "Paso 2: Base de datos (RDS) creada" {
+  shape: text
+  near: top-center
+  style.font-size: 24
+  style.bold: true
+}
+
+local: "Tu Computador (Local)" {
+  style.stroke: "#334155"
+  style.fill: "#f8fafc"
+  style.opacity: 1.0
+
+  browser: "Navegador SPA (Tailwind + GSAP)\nCarga el frontend desde S3\ny llama la API REST (fetch)" {
+    style.opacity: 0.25
+  }
+}
+
+vps: "VPS Hostinger - Ubuntu 24.04 + Docker" {
+  style.stroke-dash: 4
+  style.fill: "#f1f5f9"
+  style.opacity: 1.0
+
+  daemon: "Docker Engine (host)" {
+    style.fill: "#10b981"
+    style.font-color: white
+    style.opacity: 1.0
+  }
+
+  floci: "Floci (emulador AWS) :4566" {
+    style.stroke: "#ea580c"
+    style.fill: "#fff7ed"
+    style.opacity: 1.0
+
+    s3: "Amazon S3" {
+      icon: https://icons.terrastruct.com/aws%2FStorage%2FAmazon-Simple-Storage-Service-S3_Bucket_light-bg.svg
+      shape: image
+      style.opacity: 0.25
+    }
+    apigw: "Amazon API Gateway" {
+      icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-API-Gateway_light-bg.svg
+      shape: image
+      style.opacity: 0.25
+    }
+    lambda: "AWS Lambda" {
+      icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+      shape: image
+      style.opacity: 0.25
+    }
+    rds: "Amazon RDS" {
+      icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+      shape: image
+      style.opacity: 1.0
+    }
+
+    apigw -> lambda: "invoca" {
+      style.opacity: 0.25
+    }
+    lambda -> rds: "SQL" {
+      style.opacity: 0.25
+    }
+  }
+
+  daemon -> floci: "/var/run/docker.sock (Docker-out-of-Docker)" {
+    style.stroke-dash: 4
+    style.opacity: 1.0
+  }
+}
+
+local.browser -> vps.floci: "Tunel SSH cifrado - puerto 4566 (frontend + API)" {
+  style.opacity: 0.25
+}

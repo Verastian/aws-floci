@@ -23,7 +23,7 @@
 - **Frontend**: único cambio de código respecto al original es `API_ID` en `frontend/app.js`, apuntando a `a7f3682d91`.
 - **Acceso público**: confirmado funcionando de inmediato en `https://floci.devera.cloud/site/quiz-avanzado-frontend/` y `https://floci.devera.cloud/restapis/a7f3682d91/$default/_user_request_/...`, sin ningún cambio en `nginx-proxy-manager` (ver Fase 1 en `GUIA-SERVICIOS-AVANZADOS.md`).
 - **Incidente encontrado de paso (no relacionado con este fork)**: durante las pruebas, `public.ecr.aws/lambda/nodejs:22` (la imagen Docker que Floci usa para correr cualquier Lambda Node 22, del original o de este fork) había desaparecido del caché de Docker del VPS, causando 502 (`Lambda.InitError: No such image`) en **todas** las Lambdas de ambos proyectos. Se resolvió con `docker pull public.ecr.aws/lambda/nodejs:22` en el VPS — si vuelve a pasar, el síntoma y el arreglo son los mismos.
-- **Operación día a día** (levantar el túnel, diagnosticar caídas, mantenerlo persistente): es exactamente igual que en el original — ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §5](../../quiz/docs/GUIA-PASO-A-PASO.md#5-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca), no se duplica aquí.
+- **Operación día a día** (levantar el túnel, diagnosticar caídas, mantenerlo persistente): es exactamente igual que en el original — ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2](../../quiz/docs/GUIA-PASO-A-PASO.md#2-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca), no se duplica aquí.
 
 ---
 

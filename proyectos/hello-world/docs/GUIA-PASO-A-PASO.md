@@ -88,6 +88,10 @@ Versión editable en Lucidchart: [Arquitectura Floci + Lambda Hello World](https
 
 ## ETAPA 1 — Instalar Floci con Docker en el VPS
 
+<img src="./imgs/Icono%20-%20Docker.png" alt="Docker" width="140">
+
+![Etapa 1.1-1.3: Floci corriendo en el VPS](./imgs/Floci%20-%20VPS%20Etapa%201.1-1.3.png)
+
 ### 1.1 Crear el archivo `docker-compose.yml`
 
 Crea una carpeta para el proyecto en el VPS (por ejemplo `/docker/floci/`) y dentro un archivo
@@ -159,6 +163,10 @@ ss -tlnp | grep 4566   # Linux
 
 ### 1.5 Configurar el perfil de AWS CLI
 
+<img src="./imgs/Icono%20-%20AWS%20CLI.png" alt="AWS CLI" width="140">
+
+![Etapa 1.4-1.6: Tunel SSH + AWS CLI + prueba de humo](./imgs/Floci%20-%20VPS%20Etapa%201.4-1.6.png)
+
 ```bash
 aws configure set aws_access_key_id test --profile floci
 aws configure set aws_secret_access_key test --profile floci
@@ -167,6 +175,8 @@ aws configure set endpoint_url http://localhost:4566 --profile floci
 ```
 
 ### 1.6 Prueba de humo
+
+<img src="./imgs/Icono%20-%20Amazon%20S3.png" alt="Amazon S3" width="140">
 
 ```bash
 aws s3 mb s3://floci-smoke-test --profile floci
@@ -209,6 +219,10 @@ zip -r function.zip index.js
 
 ### 2.3 Crear el rol de IAM que la función va a "asumir"
 
+<img src="./imgs/Icono%20-%20AWS%20IAM.png" alt="AWS IAM" width="140">
+
+![Etapa 2.3: Rol IAM creado](./imgs/Floci%20-%20VPS%20Etapa%202.3.png)
+
 ```bash
 aws iam create-role \
   --role-name lambda-hello-role \
@@ -226,7 +240,17 @@ aws iam create-role \
 El resultado incluye un **ARN** con el formato `arn:aws:iam::000000000000:role/lambda-hello-role` —
 vas a necesitarlo en el siguiente paso.
 
+**Verificar que el rol se creó** (o recuperar el ARN si perdiste la salida):
+
+```bash
+aws iam get-role --role-name lambda-hello-role --profile floci --query 'Role.Arn' --output text
+```
+
 ### 2.4 Publicar (crear) la función Lambda
+
+<img src="./imgs/Icono%20-%20AWS%20Lambda.png" alt="AWS Lambda" width="140">
+
+![Etapa 2.4-2.5: Lambda creada e invocada](./imgs/Floci%20-%20VPS%20Etapa%202.4-2.5.png)
 
 ```bash
 aws lambda create-function \
@@ -236,6 +260,12 @@ aws lambda create-function \
   --handler index.handler \
   --zip-file fileb://function.zip \
   --profile floci
+```
+
+**Verificar que la función se creó**:
+
+```bash
+aws lambda get-function-configuration --function-name hello-world --profile floci
 ```
 
 ### 2.5 Invocar la función directamente (sin HTTP) para probar
@@ -251,6 +281,8 @@ de Lambda.
 
 ### 2.6 Crear la Function URL (exponerla por HTTP)
 
+![Etapa 2.6-2.7: Function URL + permiso](./imgs/Floci%20-%20VPS%20Etapa%202.6-2.7.png)
+
 ```bash
 aws lambda create-function-url-config \
   --function-name hello-world \
@@ -264,6 +296,13 @@ El comando devuelve un JSON con el campo `FunctionUrl`, algo como:
 http://<id-aleatorio>.lambda-url.us-east-1.localhost:4566/
 ```
 
+**Recuperar la URL sin recrearla** (por ejemplo si cerraste la terminal):
+
+```bash
+aws lambda get-function-url-config --function-name hello-world --profile floci \
+  --query FunctionUrl --output text
+```
+
 ### 2.7 Dar permiso explícito de invocación pública
 
 ```bash
@@ -274,6 +313,13 @@ aws lambda add-permission \
   --principal "*" \
   --function-url-auth-type NONE \
   --profile floci
+```
+
+**Verificar el permiso** (útil si `add-permission` tira `ResourceConflictException` por haberlo
+corrido dos veces — no es error, el permiso ya estaba puesto):
+
+```bash
+aws lambda get-policy --function-name hello-world --profile floci
 ```
 
 ### 2.8 Probar el Hello World

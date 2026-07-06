@@ -1,0 +1,63 @@
+stage_title: "Paso 5: API Gateway conectada" {
+  shape: text
+  near: top-center
+  style.font-size: 24
+  style.bold: true
+}
+
+computer: "Tu Computador (Docker Desktop o Docker Engine, sin VPS ni tunel)" {
+  style.stroke-dash: 4
+  style.fill: "#f1f5f9"
+  style.opacity: 1.0
+
+  browser: "Navegador SPA (Tailwind + GSAP)\nhttp://quiz-frontend.s3-website...localhost:4566/" {
+    style.opacity: 0.25
+  }
+  daemon: "Docker Engine (local)" {
+    style.fill: "#10b981"
+    style.font-color: white
+    style.opacity: 1.0
+  }
+
+  floci: "Floci (emulador AWS) :4566" {
+    style.stroke: "#ea580c"
+    style.fill: "#fff7ed"
+    style.opacity: 1.0
+
+    s3: "Amazon S3" {
+      icon: https://icons.terrastruct.com/aws%2FStorage%2FAmazon-Simple-Storage-Service-S3_Bucket_light-bg.svg
+      shape: image
+      style.opacity: 0.25
+    }
+    apigw: "Amazon API Gateway" {
+      icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-API-Gateway_light-bg.svg
+      shape: image
+      style.opacity: 1.0
+    }
+    lambda: "AWS Lambda\n(x6: categories, questions,\nanswer, submit, ranking, badges)" {
+      icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+      shape: image
+      style.opacity: 1.0
+    }
+    rds: "Amazon RDS" {
+      icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+      shape: image
+      style.opacity: 1.0
+    }
+
+    apigw -> lambda: "invoca (por ruta)" {
+      style.opacity: 1.0
+    }
+    lambda -> rds: "SQL" {
+      style.opacity: 1.0
+    }
+  }
+
+  browser -> floci: "descarga sitio (S3) + fetch a la API (JSON/text-plain)" {
+    style.opacity: 0.25
+  }
+  daemon -> floci: "/var/run/docker.sock (Docker-out-of-Docker)" {
+    style.stroke-dash: 4
+    style.opacity: 1.0
+  }
+}

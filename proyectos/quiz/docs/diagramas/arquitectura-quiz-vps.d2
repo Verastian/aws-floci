@@ -1,0 +1,47 @@
+local: "Tu Computador (Local)" {
+  style.stroke: "#334155"
+  style.fill: "#f8fafc"
+
+  browser: "Navegador SPA (Tailwind + GSAP)\nCarga el frontend desde S3\ny llama la API REST (fetch)"
+}
+
+vps: "VPS Hostinger - Ubuntu 24.04 + Docker" {
+  style.stroke-dash: 4
+  style.fill: "#f1f5f9"
+
+  daemon: "Docker Engine (host)" {
+    style.fill: "#10b981"
+    style.font-color: white
+  }
+
+  floci: "Floci (emulador AWS) :4566" {
+    style.stroke: "#ea580c"
+    style.fill: "#fff7ed"
+
+    s3: "Amazon S3" {
+      icon: https://icons.terrastruct.com/aws%2FStorage%2FAmazon-Simple-Storage-Service-S3_Bucket_light-bg.svg
+      shape: image
+    }
+    apigw: "Amazon API Gateway" {
+      icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-API-Gateway_light-bg.svg
+      shape: image
+    }
+    lambda: "AWS Lambda" {
+      icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+      shape: image
+    }
+    rds: "Amazon RDS" {
+      icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+      shape: image
+    }
+
+    apigw -> lambda: "invoca"
+    lambda -> rds: "SQL"
+  }
+
+  daemon -> floci: "/var/run/docker.sock (Docker-out-of-Docker)" {
+    style.stroke-dash: 4
+  }
+}
+
+local.browser -> vps.floci: "Tunel SSH cifrado - puerto 4566 (frontend + API)"

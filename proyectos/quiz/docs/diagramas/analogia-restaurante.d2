@@ -1,0 +1,29 @@
+cliente: "Cliente del restaurante\n(vos, usando el Quiz)" {
+  style.fill: "#e5e7eb"
+}
+menu: "Menu impreso\n(S3: el sitio web)" {
+  style.fill: "#dcfce7"
+}
+mostrador: "Mostrador de pedidos\n(API Gateway)" {
+  style.fill: "#ede9fe"
+}
+cocinero: "Cocinero\n(Lambda: hace el trabajo)" {
+  style.fill: "#ffedd5"
+}
+despensa: "Despensa\n(RDS: guarda todo)" {
+  style.fill: "#fae8ff"
+}
+
+cliente -> menu: "mira el menu (sin pedir nada)"
+cliente -> mostrador: "hace un pedido"
+mostrador -> cliente: "te sirve el resultado" {
+  style.stroke-dash: 4
+}
+mostrador -> cocinero: "pasa el pedido"
+cocinero -> mostrador: "entrega el plato listo" {
+  style.stroke-dash: 4
+}
+cocinero -> despensa: "busca ingredientes"
+despensa -> cocinero: "entrega los ingredientes" {
+  style.stroke-dash: 4
+}

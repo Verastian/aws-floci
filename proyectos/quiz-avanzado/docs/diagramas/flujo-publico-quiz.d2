@@ -1,0 +1,24 @@
+shape: sequence_diagram
+
+navegador: "Navegador\n(cualquier persona)"
+nginx: "nginx-proxy-manager\n(VPS, HTTPS real)"
+floci: "Floci"
+apigw: "API Gateway\n(dentro de Floci)"
+lambda: "Lambda"
+rds: "RDS (Postgres)"
+
+navegador -> nginx: "GET https://floci.devera.cloud/site/quiz-frontend/"
+nginx -> floci: "Host: quiz-frontend.s3-website...:4566"
+floci -> nginx: "index.html / style.css / app.js"
+nginx -> navegador: "respuesta (HTTPS)"
+
+navegador -> nginx: "GET https://floci.devera.cloud/restapis/.../categories"
+nginx -> floci: "Host: localhost:4566, path /restapis/..."
+floci -> apigw: "enruta segun api_id + ruta"
+apigw -> lambda: "invoca (payload v2)"
+lambda -> rds: "SELECT ..."
+rds -> lambda: "filas"
+lambda -> apigw: "statusCode + body JSON"
+apigw -> floci: "respuesta"
+floci -> nginx: "respuesta"
+nginx -> navegador: "JSON (HTTPS)"

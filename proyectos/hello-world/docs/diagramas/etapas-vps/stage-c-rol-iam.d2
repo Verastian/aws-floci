@@ -1,0 +1,79 @@
+stage_title: "ETAPA 2.3: Rol de ejecucion IAM creado" {
+  shape: text
+  near: top-center
+  style.font-size: 24
+  style.bold: true
+}
+
+local: "Tu Computador (Local)" {
+  style.stroke: "#334155"
+  style.fill: "#f8fafc"
+  style.opacity: 1.0
+
+  cli: "AWS CLI (perfil floci)\nendpoint http://localhost:4566" {
+    style.opacity: 1.0
+  }
+  browser: "Navegador\n(abre la Function URL)" {
+    style.opacity: 0.25
+  }
+}
+
+vps: "VPS Hostinger - Ubuntu 24.04 + Docker" {
+  style.stroke-dash: 4
+  style.fill: "#f1f5f9"
+  style.opacity: 1.0
+
+  daemon: "Docker Engine (host)" {
+    style.fill: "#10b981"
+    style.font-color: white
+    style.opacity: 1.0
+  }
+
+  floci: "Floci (emulador AWS) :4566" {
+    style.stroke: "#ea580c"
+    style.fill: "#fff7ed"
+    style.opacity: 1.0
+
+    funcurl: "Function URL - AuthType: NONE\nhttp://<id>.lambda-url...localhost:4566/" {
+      style.opacity: 0.25
+    }
+
+    lambda: "AWS Lambda" {
+      icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+      shape: image
+      style.opacity: 0.25
+    }
+    iam: "AWS IAM (rol de ejecucion)" {
+      icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identify-and-Access-Management_IAM.svg
+      shape: image
+      style.opacity: 1.0
+    }
+
+    funcurl -> lambda: "invoca (handler)" {
+      style.opacity: 0.25
+    }
+    lambda -> iam: "asume rol" {
+      style.opacity: 0.25
+    }
+  }
+
+  daemon -> floci: "/var/run/docker.sock (Docker-out-of-Docker)" {
+    style.stroke-dash: 4
+    style.opacity: 1.0
+  }
+}
+
+external: "Contenedor efimero real\npublic.ecr.aws/lambda/nodejs:22\n(creado on-demand por invocacion)" {
+  style.stroke: "#ea580c"
+  style.stroke-dash: 4
+  style.opacity: 0.25
+}
+
+local.browser -> vps.floci: "Tunel SSH cifrado - reenvia puerto 4566" {
+  style.opacity: 0.25
+}
+vps.floci -> external: "crea contenedor real bajo demanda" {
+  style.stroke: "#ea580c"
+  style.stroke-dash: 4
+  style.opacity: 0.25
+}

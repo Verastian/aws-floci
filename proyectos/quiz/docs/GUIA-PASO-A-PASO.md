@@ -1,145 +1,42 @@
-# Guía paso a paso: Quiz de AWS Cloud Practitioner (serverless completo)
+# Guía paso a paso: Quiz de AWS Cloud Practitioner en un VPS remoto
 
-**Nivel:** Desarrollador Junior/Intermedio — se asume que ya viste [la guía de Hello World](../../hello-world/docs/GUIA-PASO-A-PASO.md) (Lambda, IAM, Function URL, AWS CLI, túnel SSH). Aquí se construye sobre esos conceptos.
+**Para quién es este documento:** para quien ya hizo [`GUIA-LOCAL-DOCKER.md`](./GUIA-LOCAL-DOCKER.md) (o ya conoce los conceptos de Lambda/IAM/RDS/API Gateway que ahí se explican) y ahora quiere desplegar el mismo Quiz en un **servidor remoto compartido** en vez de su propia máquina. Este documento **no repite los conceptos ni la tabla "Floci vs. AWS real"** — viven en la guía local. Acá el foco es exclusivamente la diferencia: el túnel SSH, y el día a día de mantener este entorno arriba (la parte que sí es específica de compartir un VPS, no de aprender AWS).
 
-**Objetivo de este documento:** construir una aplicación **serverless completa** (frontend + API REST + base de datos relacional) y entender exactamente qué cambiaría para desplegarla en una cuenta de **AWS real**, en vez de en el emulador Floci. Cada sección tiene una nota "**En AWS real...**" señalando las diferencias.
-
-Diagrama de arquitectura: [Arquitectura Quiz - AWS Cloud Practitioner](https://lucid.app/lucidchart/ef357963-ac6c-4ab1-a152-466ba54fc490/edit) (ver también la sección 3, más abajo, con la imagen incrustada).
+Diagrama de arquitectura: [Arquitectura Quiz - AWS Cloud Practitioner](https://lucid.app/lucidchart/ef357963-ac6c-4ab1-a152-466ba54fc490/edit) (ver también la sección 1, más abajo, con la imagen incrustada).
 
 ---
 
 ## Índice
 
-1. [Qué vas a construir](#1-qué-vas-a-construir)
-2. [Conceptos nuevos respecto a la guía de Hello World](#2-conceptos-nuevos-respecto-a-la-guía-de-hello-world)
-3. [Arquitectura general](#3-arquitectura-general)
-4. [Floci vs. AWS real: qué cambia](#4-floci-vs-aws-real-qué-cambia)
-5. [Cómo levantar el entorno y qué hacer si no arranca](#5-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca)
-6. [Paso 1 — Modelo de datos](#paso-1--modelo-de-datos)
-7. [Paso 2 — Base de datos (RDS)](#paso-2--base-de-datos-rds)
-8. [Paso 3 — Cargar los datos](#paso-3--cargar-los-datos)
-9. [Paso 4 — Las funciones Lambda](#paso-4--las-funciones-lambda)
-10. [Paso 5 — API Gateway](#paso-5--api-gateway)
-11. [Paso 6 — Frontend (Tailwind + GSAP + S3)](#paso-6--frontend-tailwind--gsap--s3)
-12. [Flujo completo de una partida](#12-flujo-completo-de-una-partida)
-13. [Checklist para desplegar en AWS real](#13-checklist-para-desplegar-en-aws-real)
-14. [Glosario](#14-glosario)
+1. [Arquitectura general (VPS)](#1-arquitectura-general-vps)
+2. [Cómo levantar el entorno y qué hacer si no arranca](#2-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca)
+3. [Paso 1 — Modelo de datos](#paso-1--modelo-de-datos)
+4. [Paso 2 — Base de datos (RDS)](#paso-2--base-de-datos-rds)
+5. [Paso 3 — Cargar los datos](#paso-3--cargar-los-datos)
+6. [Paso 4 — Las funciones Lambda](#paso-4--las-funciones-lambda)
+7. [Paso 5 — API Gateway](#paso-5--api-gateway)
+8. [Paso 6 — Frontend (Tailwind + GSAP + S3)](#paso-6--frontend-tailwind--gsap--s3)
+9. [Flujo completo de una partida](#9-flujo-completo-de-una-partida)
 
 ---
 
-## 1. Qué vas a construir
-
-Un quiz de preguntas de AWS Cloud Practitioner con:
-
-- Selector de categoría, cantidad de preguntas, avatar y color de perfil.
-- Preguntas con **respuesta inmediata** (correcto/incorrecto al toque, sin esperar al final).
-- Sistema de **puntos + racha**, **medallas/logros**, **ranking** y **modo claro/oscuro**.
-- Todo corriendo sobre servicios "AWS" (S3, API Gateway, Lambda, RDS) — emulados por Floci en tu VPS, pero con el mismo código y los mismos comandos que usarías contra la nube real.
-
----
-
-## 2. Conceptos nuevos respecto a la guía de Hello World
-
-Si ya hiciste el Hello World, ya sabes qué es Lambda, IAM, y cómo apuntar el AWS CLI a un endpoint local. Esta sección cubre lo nuevo.
-
-### 2.1 De una función a una API completa
-
-El Hello World tenía **una** Lambda con una Function URL. Este proyecto tiene **6 Lambdas** (`categories`, `questions`, `answer`, `submit`, `ranking`, `badges`), cada una haciendo una sola cosa (principio de responsabilidad única), todas detrás de un único **API Gateway**. En vez de una URL por función, tienes **una API con varias rutas**:
-
-```
-GET  /categories
-GET  /questions/{categoria}
-POST /answer
-POST /submit
-GET  /ranking
-GET  /badges
-```
-
-Esto es el patrón real que vas a encontrar en casi cualquier backend serverless en producción: **API Gateway como "puerta de entrada" única**, que enruta cada combinación método+ruta a la Lambda que corresponda.
-
-### 2.2 Bases de datos relacionales en la nube (RDS)
-
-Hasta ahora no habíamos necesitado guardar nada permanente. Este proyecto sí: preguntas, opciones, explicaciones y el ranking viven en una base de datos **Postgres real** (RDS = *Relational Database Service*, el servicio de AWS para bases de datos relacionales administradas — no tienes que instalar ni parchear el motor de base de datos tú mismo, AWS lo hace).
-
-Un Lambda que necesita hablarle a la base de datos:
-1. Se conecta con credenciales (usuario/contraseña + host/puerto).
-2. Ejecuta SQL normal (`SELECT`, `INSERT`, etc.) con una librería cliente (`pg` en nuestro caso, para Node.js).
-3. Cierra la conexión al terminar (importante: Lambda no es un servidor de larga duración, cada invocación abre y cierra su propia conexión).
-
-### 2.3 CORS (Cross-Origin Resource Sharing)
-
-Cuando tu frontend (servido desde un dominio/puerto) llama a una API en **otro** dominio/puerto, el navegador aplica una política de seguridad llamada CORS: por defecto, **bloquea** esa llamada, a menos que el servidor responda explícitamente "sí, acepto peticiones desde ese origen".
-
-Para peticiones "no simples" (por ejemplo, un `POST` con `Content-Type: application/json`), el navegador primero manda una petición de **preflight** (`OPTIONS`) preguntando "¿puedo hacer esta petición?", y solo si la respuesta lo autoriza, manda la petición real. Esto explica un detalle que vas a ver en el código: usamos `Content-Type: text/plain` en vez de `application/json` para evitar el preflight contra una limitación puntual del emulador (ver sección 4).
-
-### 2.4 Por qué el puntaje se calcula en el servidor (integridad de datos)
-
-Ya lo vimos en el Hello... perdón, en el proyecto anterior no aplicaba, pero acá es central: **el cliente (navegador) nunca es una fuente confiable**. Cualquiera puede abrir las herramientas de desarrollador y cambiar variables de JavaScript. Por eso:
-
-- `/answer` y `/submit` **siempre** recalculan la corrección de cada respuesta consultando la base de datos — nunca confían en un campo `correcta: true` que pudiera venir manipulado desde el navegador.
-- El puntaje final, la racha y el puesto en el ranking se calculan **en la Lambda**, no en el navegador (el navegador solo *muestra* un cálculo optimista en vivo, para que se sienta inmediato, pero lo que se guarda es siempre el cálculo del servidor).
-
-### 2.5 Hosting estático de un SPA (Single Page Application) completo
-
-En el Hello World servimos una sola página. Acá el frontend es una aplicación de una sola página (SPA) con **varias pantallas** (categorías, perfil, preguntas, resultado, ranking) que se renderizan todas con JavaScript en el navegador, sin recargar la página. Aun así, se sirve exactamente igual que cualquier sitio estático: son solo 3 archivos (`index.html`, `style.css`, `app.js`) subidos a un bucket S3 con *static website hosting* habilitado.
-
----
-
-## 3. Arquitectura general
+## 1. Arquitectura general (VPS)
 
 ![Arquitectura Quiz](./imgs/arquitectura-quiz.png)
 
 Diagrama editable: [Arquitectura Quiz - AWS Cloud Practitioner](https://lucid.app/lucidchart/ef357963-ac6c-4ab1-a152-466ba54fc490/edit)
 
-Resumen del flujo: tu navegador (con el túnel SSH activo) carga el frontend estático desde S3, y llama a la API (API Gateway → Lambda → RDS) para todo lo dinámico. Floci corre como un contenedor Docker en el VPS, y usa el socket de Docker del host para levantar los contenedores reales de Lambda y RDS.
-
-### 3.1 Cómo se vería en una cuenta de AWS real (VPC, región, Availability Zones)
-
-El diagrama de arriba es fiel a **Floci**, pero no muestra algo que sí existe en AWS real: cada cuenta tiene **regiones** (ej. `us-east-1`), cada región tiene varias **Availability Zones** físicamente separadas (para tolerar que una se caiga sin afectar a las demás), y los recursos "de red privada" (Lambda con acceso a RDS, la propia RDS) viven dentro de una **VPC** con subredes públicas/privadas — nada de esto es visible al trabajar contra Floci, porque Floci no emula la capa de red, solo el comportamiento de cada servicio.
-
-![Arquitectura AWS real: VPC, Availability Zones, Region](./imgs/AWS-FLOCI%20-%20Arquitectura%20AWS%20real%20v2.png)
-
-Diagrama editable en Lucid: [AWS-FLOCI - Arquitectura AWS real v2](https://lucid.app/lucidchart/c4f12314-8380-4842-9325-4508233b6a52/edit)
-
-Ideas clave que este segundo diagrama agrega sobre el primero:
-
-- **Región**: unidad geográfica de más alto nivel (ej. `us-east-1`, Virginia). Todo lo demás vive dentro de una región.
-- **VPC (Virtual Private Cloud)**: tu red privada aislada dentro de la región. RDS y las Lambdas que necesitan hablarle a RDS viven dentro de una VPC; S3, API Gateway y Route 53 son servicios **regionales**, no viven "dentro" de ninguna VPC (por eso en el diagrama quedan fuera del rectángulo de la VPC).
-- **Availability Zone (AZ)**: un centro de datos físicamente independiente dentro de la región (con su propia energía, refrigeración, red). Una región real tiene 3 o más. Repartir recursos entre AZs es lo que te da tolerancia a fallos "de verdad" (si una AZ entera se cae, la app sigue funcionando desde la otra).
-- **Subred pública vs. privada**: una subred pública tiene ruta directa a un **Internet Gateway** (recursos con IP pública); una privada no — solo sale a internet indirectamente vía un **NAT Gateway** (útil para que, por ejemplo, una Lambda pueda llamar a una API externa sin exponer la base de datos al mundo). En este proyecto, Lambda y RDS viven en subred **privada** — nunca necesitan ser alcanzables directamente desde internet, solo entre sí y desde API Gateway (que sí es público).
-- **RDS Multi-AZ**: en producción real, se recomienda una instancia RDS **primaria** en una AZ y una **standby** en otra, replicadas de forma síncrona — si la AZ de la primaria falla, AWS conmuta a la standby automáticamente. Floci no emula esto (una sola instancia, sin AZs), pero es la práctica estándar en una cuenta real.
+Resumen del flujo: tu navegador (con el túnel SSH activo) carga el frontend estático desde S3, y llama a la API (API Gateway → Lambda → RDS) para todo lo dinámico. Floci corre como un contenedor Docker en el VPS, y usa el socket de Docker del host para levantar los contenedores reales de Lambda y RDS. Para la variante sin VPS/túnel (y para el diagrama de cómo se vería en una cuenta de AWS real, con VPC/Región/AZ), ver [`GUIA-LOCAL-DOCKER.md` §3](./GUIA-LOCAL-DOCKER.md#3-arquitectura-general).
 
 ---
 
-## 4. Floci vs. AWS real: qué cambia
-
-Esta es la sección más importante si tu objetivo es migrar esto a una cuenta de AWS real. La lógica de negocio (el código de las Lambdas, el esquema SQL, el frontend) **es exactamente el mismo**. Lo que cambia es la capa de infraestructura y algunos detalles operativos:
-
-| Aspecto | En Floci (este proyecto) | En AWS real |
-|---|---|---|
-| **Tiempo de aprovisionamiento** | `aws rds create-db-instance` responde en segundos (`"DBInstanceStatus": "available"` inmediato) | Puede tardar **varios minutos** (a veces 10-15) en pasar de `creating` a `available`. Hay que esperar/consultar con `aws rds describe-db-instances` |
-| **Red de la RDS** | Endpoint interno de Docker (`172.22.0.2:7001`), alcanzable solo desde el host del VPS o desde contenedores en la misma red Docker | Vive dentro de una **VPC** (red privada), con **Security Groups** que debes configurar explícitamente para permitir que tus Lambdas se conecten (regla de entrada en el puerto 5432 desde el Security Group de las Lambdas) |
-| **Conectividad Lambda → RDS** | Automática: Floci conecta los contenedores Lambda a la misma red Docker | Debes configurar tus Lambdas para que corran **dentro de la misma VPC** que la RDS (`--vpc-config` con subnets y security groups) — sin esto, la Lambda no puede alcanzar la base de datos |
-| **Contraseña de la base de datos** | Variable de entorno en texto plano (`PGPASSWORD=...`) | Se recomienda **AWS Secrets Manager** para guardar y rotar la credencial, en vez de dejarla en texto plano en la configuración de la Lambda |
-| **CORS en API Gateway** | La ruta interna de invocación de Floci (`_user_request_`) no procesa bien el preflight `OPTIONS`, por eso el frontend usa `Content-Type: text/plain` como workaround | El `--cors-configuration` de API Gateway **funciona correctamente out-of-the-box**; no necesitas el workaround, puedes usar `application/json` sin problema |
-| **URL de invocación de la API** | Patrón interno `http://localhost:4566/restapis/{api_id}/{stage}/_user_request_/{ruta}` | URL pública real: `https://{api_id}.execute-api.{region}.amazonaws.com/{stage}/{ruta}` (HTTPS, sin túnel SSH necesario) |
-| **Hosting del frontend (S3)** | Acceso vía túnel SSH a `http://{bucket}.s3-website.{region}.localhost:4566/`, sin necesidad de hacerlo público | Para que cualquiera pueda ver el sitio, el bucket necesita una **bucket policy pública** (o, mejor práctica, **CloudFront** delante del bucket, con el bucket en privado) |
-| **HTTPS** | No aplica (todo pasa por el túnel SSH cifrado) | API Gateway ya da HTTPS por defecto; para el frontend en S3 necesitas CloudFront + un certificado de **AWS Certificate Manager (ACM)** si quieres un dominio propio con HTTPS |
-| **IAM** | El rol de cada Lambda solo tiene la *trust policy* (quién puede asumirlo); Floci no aplica permisos reales | Debes adjuntar también una **política de permisos** (qué puede hacer el rol), aunque sea mínima como `AWSLambdaBasicExecutionRole` para poder escribir logs a CloudWatch |
-| **Logs** | `docker logs` del contenedor de la Lambda | **Amazon CloudWatch Logs**, con `aws logs tail /aws/lambda/quiz-submit --follow` |
-| **Costo** | $0, todo local | Cada servicio tiene costo real (RDS por hora + almacenamiento, Lambda por invocación, API Gateway por petición, S3 por almacenamiento/transferencia) |
-
-**Conclusión práctica:** si migras esto a AWS real, el 90% del trabajo (SQL, código de las Lambdas, HTML/CSS/JS del frontend) se reutiliza tal cual. El 10% que cambia es exactamente lo de esta tabla: crear una VPC con Security Groups, adjuntar políticas IAM reales, esperar los tiempos de aprovisionamiento reales, y decidir cómo exponer el sitio públicamente (bucket público vs. CloudFront).
-
----
-
-## 5. Cómo levantar el entorno y qué hacer si no arranca
+## 2. Cómo levantar el entorno y qué hacer si no arranca
 
 Esta sección es para el **día a día** (no para la primera vez que se construye el proyecto): qué hacer cada vez que te sientas a trabajar, y cómo diagnosticar por qué "no anda" cuando ya estaba desplegado y de repente dejó de responder — que es justo la situación más común y más confusa, porque **hay dos cosas independientes que tienen que estar arriba a la vez**, y solo una de ellas vive en el VPS.
 
-> **Desde 2026-07-05, esto solo aplica a tareas administrativas** (desplegar una Lambda, crear un bucket, correr `aws cli`). **Jugar el Quiz ya no requiere túnel ni que tu equipo esté encendido**: es accesible con HTTPS real, para cualquiera, en `https://floci.devera.cloud/site/quiz-frontend/` — ver el detalle en [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada) (la documentación de servicios avanzados vive en ese proyecto). El resto de esta sección (5.1 a 5.5) sigue siendo válido tal cual para cuando vos mismo necesitás trabajar sobre Floci.
+> **Desde 2026-07-05, esto solo aplica a tareas administrativas** (desplegar una Lambda, crear un bucket, correr `aws cli`). **Jugar el Quiz ya no requiere túnel ni que tu equipo esté encendido**: es accesible con HTTPS real, para cualquiera, en `https://floci.devera.cloud/site/quiz-frontend/` — ver el detalle en [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada) (la documentación de servicios avanzados vive en ese proyecto). El resto de esta sección (2.1 a 2.5) sigue siendo válido tal cual para cuando vos mismo necesitás trabajar sobre Floci.
 
-### 5.1 Las dos piezas que tienen que estar levantadas
+### 2.1 Las dos piezas que tienen que estar levantadas
 
 | Pieza | Dónde corre | Se cae por | Sobrevive un reinicio del VPS |
 |---|---|---|---|
@@ -148,7 +45,7 @@ Esta sección es para el **día a día** (no para la primera vez que se construy
 
 Esto explica el caso típico: **"en Docker el servicio de Floci está corriendo, pero el quiz no carga"**. Si el contenedor está `Up` en el VPS pero tu máquina no tiene el túnel activo en este momento (por ejemplo, porque reiniciaste tu equipo o cerraste la sesión desde la última vez), tu navegador y tu AWS CLI simplemente no tienen forma de llegar a `localhost:4566` — no es que Floci esté caído, es que **no hay nadie escuchando ese puerto en tu propia máquina**. Se ve exactamente igual desde afuera (todo "no responde"), pero la causa y el arreglo son distintos.
 
-### 5.2 Levantar el entorno, paso a paso, cada vez que empiezas a trabajar
+### 2.2 Levantar el entorno, paso a paso, cada vez que empiezas a trabajar
 
 **1. Verifica el contenedor de Floci en el VPS** (por SSH, o desde el Docker Manager del panel de Hostinger):
 
@@ -156,7 +53,7 @@ Esto explica el caso típico: **"en Docker el servicio de Floci está corriendo,
 ssh root@<TU-IP-VPS> "docker ps --filter name=floci"
 ```
 
-Debería aparecer `floci-floci-1` con estado `Up ... (healthy)`. Si no aparece o está `Exited`, ver el punto 5.3.
+Debería aparecer `floci-floci-1` con estado `Up ... (healthy)`. Si no aparece o está `Exited`, ver el punto 2.3.
 
 **2. Levanta (o vuelve a levantar) el túnel SSH desde tu equipo local:**
 
@@ -164,7 +61,7 @@ Debería aparecer `floci-floci-1` con estado `Up ... (healthy)`. Si no aparece o
 ssh -f -N -L 4566:localhost:4566 root@<TU-IP-VPS>
 ```
 
-`-f` lo manda a segundo plano, `-N` indica que no se va a ejecutar ningún comando remoto, solo reenviar el puerto. Este comando **hay que repetirlo cada vez** que tu máquina se reinicia o la sesión se corta — no queda "instalado", ver 5.4 para dejarlo automatizado.
+`-f` lo manda a segundo plano, `-N` indica que no se va a ejecutar ningún comando remoto, solo reenviar el puerto. Este comando **hay que repetirlo cada vez** que tu máquina se reinicia o la sesión se corta — no queda "instalado", ver 2.4 para dejarlo automatizado.
 
 **3. Confirma que el túnel realmente quedó escuchando en tu máquina:**
 
@@ -182,7 +79,7 @@ Si no aparece nada, el túnel no se estableció (revisa el mensaje de error del 
 curl http://localhost:4566/_localstack/health
 ```
 
-Debe devolver un JSON con todos los servicios en `"running"`. Si esto fallara (`curl: (7) Failed to connect`) con el túnel ya confirmado arriba en el paso 3, el problema pasó a estar del lado del contenedor (volver a 5.3).
+Debe devolver un JSON con todos los servicios en `"running"`. Si esto fallara (`curl: (7) Failed to connect`) con el túnel ya confirmado arriba en el paso 3, el problema pasó a estar del lado del contenedor (volver a 2.3).
 
 **5. Prueba específicamente el Quiz (frontend + API), no solo la salud genérica de Floci:**
 
@@ -191,20 +88,20 @@ curl -sI http://quiz-frontend.s3-website.us-east-1.localhost:4566/          # fr
 curl -s  http://localhost:4566/restapis/f3744ef7e3/\$default/_user_request_/categories  # API (reemplaza el api_id si cambió)
 ```
 
-Si el paso 4 respondió bien pero alguno de estos dos falla, el problema es específico del Quiz (bucket borrado, API Gateway recreada con otro `api_id`, RDS caída), no de Floci en general — sigue en 5.3 con el chequeo puntual que corresponda.
+Si el paso 4 respondió bien pero alguno de estos dos falla, el problema es específico del Quiz (bucket borrado, API Gateway recreada con otro `api_id`, RDS caída), no de Floci en general — sigue en 2.3 con el chequeo puntual que corresponda.
 
-### 5.3 Diagnóstico cuando algo específico no arranca
+### 2.3 Diagnóstico cuando algo específico no arranca
 
 | Síntoma | Causa más probable | Qué hacer |
 |---|---|---|
-| Nada responde, ni `_localstack/health` | Túnel SSH no está activo en tu máquina (ver 5.1) | Repetir el paso 2 de 5.2. Es, con diferencia, la causa más frecuente — y la que **no** se ve revisando Docker en el VPS, porque el túnel no vive ahí |
+| Nada responde, ni `_localstack/health` | Túnel SSH no está activo en tu máquina (ver 2.1) | Repetir el paso 2 de 2.2. Es, con diferencia, la causa más frecuente — y la que **no** se ve revisando Docker en el VPS, porque el túnel no vive ahí |
 | `_localstack/health` responde pero con timeout intermitente o `503` | El contenedor de Floci está reiniciándose o sin recursos (RAM/CPU) | En el VPS: `docker logs floci-floci-1 --tail 100` y `docker stats` para descartar que el VPS se quedó sin RAM (recordar que cada Lambda/RDS activa suma contenedores hermanos reales) |
 | Floci sano, pero `categories`/`ranking` devuelven error 500 o timeout | La RDS (contenedor Postgres real, hermano de Floci) no está levantada o no es alcanzable en `floci_default` | En el VPS: `docker ps | grep postgres` y, si hace falta, `aws rds describe-db-instances --profile floci` (ejecutado en el VPS, donde sí hay línea directa a `172.22.0.2:7001`) |
-| Floci sano, pero la API Gateway devuelve `{"message":"Not Found"}` o `NoSuchBucket` | `api_id` cambiado (la API se volvió a crear) o ruta mal escrita — recordar el patrón exacto `_user_request_` de la sección 4 | `aws apigatewayv2 get-apis --profile floci` para confirmar el `api_id` vigente y actualizar `API_BASE` en `frontend/app.js` si cambió |
+| Floci sano, pero la API Gateway devuelve `{"message":"Not Found"}` o `NoSuchBucket` | `api_id` cambiado (la API se volvió a crear) o ruta mal escrita — recordar el patrón exacto `_user_request_` (ver [`GUIA-LOCAL-DOCKER.md` §4](./GUIA-LOCAL-DOCKER.md#4-floci-vs-aws-real-qué-cambia)) | `aws apigatewayv2 get-apis --profile floci` para confirmar el `api_id` vigente y actualizar `API_BASE` en `frontend/app.js` si cambió |
 | El frontend carga pero muestra datos viejos o no refleja un cambio recién subido | Caché del navegador (los objetos S3 se suben con `--cache-control "no-cache"`, pero un despliegue viejo sin ese header pudo quedar cacheado) | `Ctrl+Shift+R` / ventana privada; confirmar que el último `aws s3 cp` incluyó `--cache-control "no-cache"` |
 | `ssh: connect to host ... port 22: Connection refused/timed out` al intentar el túnel | El VPS está apagado/reiniciando, o cambió de IP, o hay un firewall bloqueando | Verificar el estado del VPS desde el panel de Hostinger antes de sospechar de Floci |
 
-### 5.4 Cómo dejarlo levantado de forma más permanente
+### 2.4 Cómo dejarlo levantado de forma más permanente
 
 - **El contenedor de Floci** ya está resuelto: `restart: unless-stopped` en su `docker-compose.yml` hace que Docker lo vuelva a levantar solo si el VPS se reinicia o si el proceso muere. No requiere acción de tu parte.
 - **El túnel SSH era la pieza que realmente se caía seguido**, porque es un proceso en tu propio equipo, no en el VPS — `ssh -f -N -L ...` no se reconecta solo si la red se corta ni sobrevive a que reinicies tu máquina. Esto ya está resuelto de forma permanente con `autossh` + un servicio de `systemd` (implementado el 2026-07-04, tras justamente quedar caído por esta causa):
@@ -228,13 +125,13 @@ Si el paso 4 respondió bien pero alguno de estos dos falla, el problema es espe
   journalctl -u floci-tunnel.service -f   # ver logs / reconexiones en vivo
   sudo systemctl restart floci-tunnel.service
   ```
-  Con esto, el túnel queda arriba automáticamente mientras la máquina esté encendida (arranca con `systemd` al iniciar, y se reconecta solo ante cortes) — ya no depende de acordarte de correr el `ssh -f -N` manual del paso 2 de 5.2.
+  Con esto, el túnel queda arriba automáticamente mientras la máquina esté encendida (arranca con `systemd` al iniciar, y se reconecta solo ante cortes) — ya no depende de acordarte de correr el `ssh -f -N` manual del paso 2 de 2.2.
 
   > **Límite conocido, no resuelto por esto**: en WSL, `systemd` solo corre mientras la instancia de WSL está activa, y WSL no arranca sola con Windows salvo que se configure aparte (Tarea Programada de Windows, o `wsl --exec` al inicio de sesión). Si tras reiniciar Windows el túnel sigue sin responder, lo primero es abrir una terminal de WSL (eso ya activa la instancia y, con ella, el servicio) antes de sospechar de Floci o del VPS.
 
-  **Esto ya se hizo** (2026-07-05): las rutas puntuales del Quiz (frontend S3 + `/restapis/.../_user_request_/*`) se expusieron a través del `nginx-proxy-manager` ya activo en el VPS, con HTTPS real, eliminando la dependencia del túnel SSH por completo para el uso normal del Quiz — ver la sección 5.5 más abajo y el detalle técnico completo en [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada) (documentación de servicios avanzados, que vive en ese proyecto para no duplicarla).
+  **Esto ya se hizo** (2026-07-05): las rutas puntuales del Quiz (frontend S3 + `/restapis/.../_user_request_/*`) se expusieron a través del `nginx-proxy-manager` ya activo en el VPS, con HTTPS real, eliminando la dependencia del túnel SSH por completo para el uso normal del Quiz — ver la sección 2.5 más abajo y el detalle técnico completo en [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada) (documentación de servicios avanzados, que vive en ese proyecto para no duplicarla).
 
-### 5.5 Qué resuelve realmente el túnel persistente — y qué no
+### 2.5 Qué resuelve realmente el túnel persistente — y qué no
 
 Es importante no confundir "el túnel ya no se cae solo" con "ya no dependo de mi equipo". Son cosas distintas, y vale la pena entender **cómo funciona un túnel SSH de reenvío local** (`-L`, *local port forwarding*) para ver por qué la segunda sigue siendo cierta.
 
@@ -259,15 +156,13 @@ Versión detallada (diagrama de secuencia):
 
 ![Flujo del túnel SSH](./imgs/AWS-FLOCI%20-%20Flujo%20del%20tunel%20SSH.png)
 
-Editable en Lucid: [AWS-FLOCI - Flujo del túnel SSH](https://lucid.app/lucidchart/ccd16e5b-c8b2-4bad-b9f7-81f526aa4931/edit).
-
 El punto clave: **no es que el VPS abra el puerto 4566 al mundo** — es que tu propia máquina finge tener ese puerto abierto localmente, y todo viaja disfrazado dentro de la sesión SSH. Para que eso funcione tiene que existir, en algún lugar, un proceso `ssh` con esa sesión abierta. Antes, ese "algún lugar" era una terminal que vos abrías a mano; ahora es un servicio de `systemd` — pero en los dos casos, **el proceso vive en tu equipo**, no en el VPS.
 
 Por eso `autossh` + `systemd` resuelven un problema (que el túnel se caiga por un corte de red o por olvidarte de reabrirlo) pero no resuelven el otro (que tu máquina, y con ella la instancia de WSL donde vive el servicio, tiene que estar encendida para que el proceso exista). Si apagás la laptop, no hay proceso `ssh` en ningún lado sosteniendo la sesión — Floci puede estar perfectamente sano en el VPS y aun así ser inalcanzable, porque el "lado cliente" del túnel simplemente no existe.
 
 La única forma de eliminar esa dependencia de fondo es mover el punto de entrada al lado que sí está siempre encendido (el VPS), publicando las rutas exactas a través de un proxy con HTTPS en vez de un túnel SSH — la Fase 1 mencionada arriba.
 
-**Actualización 2026-07-05: esa fase ya se implementó** (ver [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada)) — el Quiz se sirve directamente desde el VPS vía `nginx-proxy-manager` (`https://floci.devera.cloud/...`), así que **para que otras personas jueguen, "¿está el túnel arriba?" ya no es la pregunta relevante**: el VPS responde solo, esté tu equipo encendido o no. Lo que sigue siendo cierto es todo lo de arriba (5.1 a 5.4) para el otro caso de uso, el tuyo como administrador: crear un bucket nuevo, desplegar una Lambda, correr `aws cli` — eso pasa por rutas de gestión de Floci que **deliberadamente nunca se expusieron** (ver la nota de seguridad de esa misma sección), así que para eso el túnel SSH sigue siendo, y va a seguir siendo, imprescindible.
+**Actualización 2026-07-05: esa fase ya se implementó** (ver [`proyectos/quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §1](../../quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md#1-nginx--dns-exposición-pública-controlada)) — el Quiz se sirve directamente desde el VPS vía `nginx-proxy-manager` (`https://floci.devera.cloud/...`), así que **para que otras personas jueguen, "¿está el túnel arriba?" ya no es la pregunta relevante**: el VPS responde solo, esté tu equipo encendido o no. Lo que sigue siendo cierto es todo lo de arriba (2.1 a 2.4) para el otro caso de uso, el tuyo como administrador: crear un bucket nuevo, desplegar una Lambda, correr `aws cli` — eso pasa por rutas de gestión de Floci que **deliberadamente nunca se expusieron** (ver la nota de seguridad de esa misma sección), así que para eso el túnel SSH sigue siendo, y va a seguir siendo, imprescindible.
 
 ---
 
@@ -343,6 +238,10 @@ INSERT INTO categorias (nombre, slug) VALUES
 
 ## Paso 2 — Base de datos (RDS)
 
+<img src="./imgs/Icono%20-%20Amazon%20RDS.png" alt="Amazon RDS" width="140">
+
+![Etapa: RDS creada](./imgs/Quiz%20-%20VPS%20Etapa%20Paso%202%20-%20RDS%20creada.png)
+
 ```bash
 aws rds create-db-instance \
   --db-instance-identifier quiz-db \
@@ -389,6 +288,8 @@ Resultado esperado: `169 preguntas, 697 opciones, 169 explicaciones` cargadas.
 ---
 
 ## Paso 4 — Las funciones Lambda
+
+<img src="./imgs/Icono%20-%20AWS%20Lambda.png" alt="AWS Lambda" width="140">
 
 Las 6 funciones comparten el mismo patrón: reciben el evento de API Gateway (formato *payload v2*), parsean el body si es `POST`, hacen su consulta a Postgres con el cliente `pg`, y devuelven `{statusCode, headers, body}`. Todas tienen su propio rol IAM (`quiz-<nombre>-role`) con la misma *trust policy* que ya usamos en el Hello World.
 
@@ -567,11 +468,15 @@ aws lambda create-function \
 
 Se repite para `questions`, `answer`, `submit`, `ranking`, `badges`.
 
+![Etapa: Lambdas desplegadas](./imgs/Quiz%20-%20VPS%20Etapa%20Paso%204%20-%20Lambdas%20desplegadas.png)
+
 > **En AWS real**: agregar `--vpc-config SubnetIds=subnet-xxx,subnet-yyy,SecurityGroupIds=sg-xxx` para que la Lambda pueda alcanzar la RDS (están en la misma VPC), y usar Secrets Manager para `PGPASSWORD` en vez de una variable de entorno plana.
 
 ---
 
 ## Paso 5 — API Gateway
+
+<img src="./imgs/Icono%20-%20Amazon%20API%20Gateway.png" alt="Amazon API Gateway" width="140">
 
 ```bash
 # 1. Crear la API HTTP con CORS
@@ -609,11 +514,15 @@ aws apigatewayv2 create-stage --api-id $API_ID --stage-name '$default' --auto-de
 http://localhost:4566/restapis/{api_id}/$default/_user_request_/{ruta}
 ```
 
+![Etapa: API Gateway conectada](./imgs/Quiz%20-%20VPS%20Etapa%20Paso%205%20-%20API%20Gateway.png)
+
 > **En AWS real**: la URL de invocación es simplemente `https://{api_id}.execute-api.{region}.amazonaws.com/{ruta}` (con `$default` como stage implícito) — no hace falta ningún patrón especial ni túnel, es una URL pública HTTPS normal.
 
 ---
 
 ## Paso 6 — Frontend (Tailwind + GSAP + S3)
+
+<img src="./imgs/Icono%20-%20Amazon%20S3.png" alt="Amazon S3" width="140">
 
 ### Estructura
 
@@ -705,11 +614,15 @@ aws s3 cp app.js s3://quiz-frontend/app.js --cache-control "no-cache" --profile 
 
 Acceso: `http://quiz-frontend.s3-website.us-east-1.localhost:4566/` (a través del túnel SSH).
 
+**Con esto, la arquitectura completa ya está funcionando de punta a punta:**
+
+![Arquitectura Quiz - completa](./imgs/arquitectura-quiz.png)
+
 > **En AWS real**: el bucket necesita una **bucket policy** que permita lectura pública (`s3:GetObject` para `Principal: "*"`), ya que por defecto todos los buckets S3 son privados. La mejor práctica es no hacer el bucket público directamente, sino ponerlo detrás de **CloudFront** (con *Origin Access Control*), que además te da HTTPS, CDN (caché en distintas ubicaciones geográficas) y la posibilidad de un dominio propio.
 
 ---
 
-## 12. Flujo completo de una partida
+## 9. Flujo completo de una partida
 
 1. El navegador pide `GET /categories` → arma la pantalla de categorías (Python/Linux se ven "Próximamente" porque `tiene_preguntas` es `false`).
 2. Usuario elige categoría → cantidad de preguntas → nombre + avatar + color (con `GET /badges?username=X` en vivo mientras escribe, con debounce de 400ms).
@@ -720,29 +633,6 @@ Acceso: `http://quiz-frontend.s3-website.us-east-1.localhost:4566/` (a través d
 
 ---
 
-## 13. Checklist para desplegar en AWS real
-
-- [ ] Crear una VPC (o usar la default) con al menos 2 subnets en distintas zonas de disponibilidad.
-- [ ] Crear un Security Group para RDS (entrada TCP 5432 solo desde el Security Group de las Lambdas) y otro para las Lambdas.
-- [ ] `aws rds create-db-instance` con `--vpc-security-group-ids` y `--db-subnet-group-name`, y **esperar** con `aws rds wait db-instance-available`.
-- [ ] Guardar la contraseña de la base de datos en **AWS Secrets Manager**, no en texto plano.
-- [ ] Adjuntar `--vpc-config` a cada Lambda (subnets + security group) para que puedan alcanzar la RDS.
-- [ ] Adjuntar una política de permisos real a cada rol IAM (mínimo `AWSLambdaBasicExecutionRole` para logs; si usas Secrets Manager, agregar permiso `secretsmanager:GetSecretValue`).
-- [ ] Crear la API Gateway igual que en Floci — el `--cors-configuration` va a funcionar directamente, puedes quitar el workaround `text/plain` del frontend si quieres (opcional, no rompe nada dejarlo).
-- [ ] Bucket S3 con *Origin Access Control* + **CloudFront** delante (recomendado) en vez de bucket público directo.
-- [ ] (Opcional) Dominio propio + certificado ACM para HTTPS con nombre propio.
-- [ ] Revisar cuotas/costos estimados antes de dejarlo corriendo sin supervisión (RDS cobra por hora aunque no se use).
-
----
-
-## 14. Glosario
-
-- **RDS (Relational Database Service)**: servicio de AWS para bases de datos relacionales administradas (Postgres, MySQL, etc.) — AWS se encarga de parches, backups y alta disponibilidad.
-- **VPC (Virtual Private Cloud)**: red privada aislada dentro de AWS, donde viven tus recursos (RDS, EC2, Lambdas con VPC habilitado).
-- **Security Group**: firewall a nivel de instancia/servicio — reglas de qué tráfico entra/sale.
-- **CORS (Cross-Origin Resource Sharing)**: mecanismo del navegador que bloquea peticiones entre distintos orígenes salvo que el servidor lo autorice explícitamente.
-- **Preflight (petición OPTIONS)**: petición previa que el navegador manda automáticamente antes de una petición "no simple", para preguntar si está autorizada.
-- **API Gateway**: servicio de AWS que expone rutas HTTP y las enruta a Lambdas (u otros servicios).
-- **Racha (streak)**: cantidad de respuestas correctas consecutivas; en este proyecto, otorga puntos extra crecientes.
-- **CloudFront**: red de distribución de contenido (CDN) de AWS — sirve contenido cacheado desde ubicaciones cercanas al usuario, y permite HTTPS/dominio propio delante de un bucket S3 privado.
-- **Secrets Manager**: servicio de AWS para guardar y rotar credenciales de forma segura, en vez de dejarlas en variables de entorno planas.
+Para el checklist de despliegue en AWS real y el glosario, ver
+[`GUIA-LOCAL-DOCKER.md` §15 y §16](./GUIA-LOCAL-DOCKER.md#15-checklist-para-desplegar-en-aws-real) —
+son independientes de si trabajaste en local o en este VPS.
