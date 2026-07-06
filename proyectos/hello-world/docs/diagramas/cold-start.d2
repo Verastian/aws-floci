@@ -1,0 +1,22 @@
+shape: sequence_diagram
+
+Usuario
+Floci: "Floci (enrutador)"
+Docker: "Docker Engine (host)"
+Lambda: "Contenedor Lambda (Node.js)"
+
+Usuario -> Floci: "Peticion HTTP a Function URL"
+
+cold_start: "Cold start (primera vez o inactividad)" {
+  Floci -> Docker: "Levanta imagen public.ecr.aws/lambda/nodejs:22"
+  Docker -> Floci: "Contenedor iniciado"
+  Floci -> Lambda: "Inyecta codigo (function.zip)"
+  Lambda -> Lambda: "Inicia runtime de Node.js"
+}
+
+Floci -> Floci: "Warm start: el contenedor ya estaba listo, el bloque de arriba no ocurre"
+
+Floci -> Lambda: "Envia evento (payload HTTP -> JSON)"
+Lambda -> Lambda: "Tu codigo procesa (handler)"
+Lambda -> Floci: "Retorna JSON (statusCode, body)"
+Floci -> Usuario: "Respuesta HTTP devuelta al navegador"

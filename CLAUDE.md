@@ -72,24 +72,42 @@ AWS-FLOCI/
   Floci-vs-real-AWS caveats, incidents), and once in a beginner-focused, Floci-agnostic companion
   modeled on `quiz/docs/AWS-PARA-PRINCIPIANTES.md` (plain language, analogies, no Docker/VPS/tunnel
   mentions) — that file is where a new section/sibling doc gets added as each phase ships.
-- **Diagrams live in Lucid**, in the folder "AWS-FLOCI Diagramas" (folder id `445317425`), not as
-  static images in the repo (no reliable way to pull a rendered PNG onto disk from this tooling —
-  docs link to the live editable Lucid document instead, e.g. `https://lucid.app/lucidchart/<id>/edit`).
-  Use Lucid for more than AWS service diagrams: sequence diagrams for connection/request flows
-  (`lucid_create_sequence_diagram`, PlantUML), and plain abstracting diagrams for mental models
-  (e.g. Cliente/Servidor/Base de datos, the restaurant analogy) belong here too, especially for
-  `AWS-PARA-PRINCIPIANTES.md`-style docs. When using `lucid_create_diagram_from_specification` with
-  AWS shapes (`namedShape`/`namedContainer`, `aws-2024` library): their `text` property is ignored
-  in rendering — they always show the library's default label — so don't rely on it to disambiguate
-  two instances of the same shape (e.g. primary vs. standby RDS); use a separate small `text` shape
-  positioned nearby instead, and verify placement doesn't collide with the icon's own caption by
-  exporting a PNG (`lucid_export_document_as_PNG`) and inspecting it before calling it done.
+- **Diagrams are built with D2** (open-source, `d2 file.d2 file.png`; if `d2` isn't on `PATH` in a
+  given session/environment, install with `curl -fsSL https://d2lang.com/install.sh | sh -s --
+  --force`), not Lucid, as of 2026-07-05 —
+  Lucid's programmatic API required heavy manual coordinate/font wrangling (containers and assisted
+  layout routinely produced broken results needing several fix-up passes) where D2's automatic
+  layout (dagre) just worked, including real AWS icons fetched from
+  `https://icons.terrastruct.com/aws%2F<Category>%2F<Name>.svg` (URL-encode the category, which
+  contains commas/spaces/`&`; look up the exact path via `https://icons.terrastruct.com/icons.json`
+  rather than guessing it — most guessed paths 403). Sequence diagrams use `shape: sequence_diagram`
+  (D2 has no PlantUML-style `alt`/`else`; approximate branches with a labeled group for one branch
+  and a self-message note for the other, see `cold-start.d2`). Per project, keep the `.d2` sources in
+  `docs/diagramas/` and the rendered PNGs in `docs/imgs/`, embedded in the markdown the same way as
+  before.
+  - **Exception — each project's one "architecture" diagram** (the single big-picture system
+    diagram, e.g. `hello-world`'s local/VPS architecture): this one is still *modeled* in Lucid too,
+    in the folder "AWS-FLOCI Diagramas" (folder id `445317425`), so it stays visually editable for
+    manual touch-ups — but only as a link ("Versión editable en Lucid: ..."), never embedded. What's
+    embedded in the doc is always the D2 render, kept in sync by hand since the two aren't
+    programmatically linked. Every other diagram type (flowcharts of a concept, sequence diagrams,
+    mental-model diagrams) is D2-only, no Lucid document at all.
+  - `lucid_export_document_as_PNG` returns the image inline in the tool result — there's no
+    dedicated tool to write those bytes to disk, but the base64 payload is present in the session's
+    own transcript JSONL (`~/.claude/projects/<project>/<session-id>.jsonl`, in the `tool_result`
+    content block matching the export tool call's `tool_use_id`); decode and write it from there if
+    an architecture diagram's Lucid version ever needs its own exported copy. Only works within the
+    same session the export was called in.
 
 ## Current projects
 
 ### `proyectos/hello-world/`
 Minimal Lambda + Function URL smoke test. `lambda/index.js` returns a static HTML string — no
-dependencies, no build step. Guide: `docs/GUIA-PASO-A-PASO.md`.
+dependencies, no build step. Two guides, split by audience: `docs/GUIA-LOCAL-DOCKER.md` is the
+primary, junior-friendly one (100% local Docker Desktop/Engine, no VPS/SSH/tunnel, all the AWS/
+Docker/Lambda concept explanations) and `docs/GUIA-PASO-A-PASO.md` covers only the delta needed to
+run the same thing on a shared remote VPS instead (SSH tunnel, `127.0.0.1` binding) — it assumes
+the local guide's concepts and doesn't repeat them.
 
 ### `proyectos/quiz/`
 **Public URL (no tunnel needed): `https://floci.devera.cloud/site/quiz-frontend/`.** If *that*

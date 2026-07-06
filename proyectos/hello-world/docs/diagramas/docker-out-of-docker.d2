@@ -1,0 +1,21 @@
+host: "Host: tu VPS o tu propia maquina" {
+  shape: rectangle
+  style.stroke: "#64748b"
+  style.fill: "#f8fafc"
+
+  daemon: "Docker Engine\n(/var/run/docker.sock)" {
+    style.fill: "#10b981"
+    style.font-color: white
+  }
+  floci: "Contenedor: Floci\n(emulador AWS)" {
+    style.fill: "#38bdf8"
+    style.font-color: white
+  }
+  lambda: "Contenedor real:\nAWS Lambda Node.js" {
+    style.fill: "#38bdf8"
+    style.font-color: white
+  }
+
+  floci -> daemon: "1. Pide crear Lambda a traves del socket"
+  daemon -> lambda: "2. Crea el contenedor hermano (no anidado)"
+}

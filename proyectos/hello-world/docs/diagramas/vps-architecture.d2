@@ -1,0 +1,51 @@
+local: "Tu Computador (Local)" {
+  style.stroke: "#334155"
+  style.fill: "#f8fafc"
+
+  cli: "AWS CLI (perfil floci)\nendpoint http://localhost:4566"
+  browser: "Navegador\n(abre la Function URL)"
+}
+
+vps: "VPS Hostinger - Ubuntu 24.04 + Docker" {
+  style.stroke-dash: 4
+  style.fill: "#f1f5f9"
+
+  daemon: "Docker Engine (host)" {
+    style.fill: "#10b981"
+    style.font-color: white
+  }
+
+  floci: "Floci (emulador AWS) :4566" {
+    style.stroke: "#ea580c"
+    style.fill: "#fff7ed"
+
+    funcurl: "Function URL - AuthType: NONE\nhttp://<id>.lambda-url...localhost:4566/"
+
+    lambda: "AWS Lambda" {
+      icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+      shape: image
+    }
+    iam: "AWS IAM (rol de ejecucion)" {
+      icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identify-and-Access-Management_IAM.svg
+      shape: image
+    }
+
+    funcurl -> lambda: "invoca (handler)"
+    lambda -> iam: "asume rol"
+  }
+
+  daemon -> floci: "/var/run/docker.sock (Docker-out-of-Docker)" {
+    style.stroke-dash: 4
+  }
+}
+
+external: "Contenedor efimero real\npublic.ecr.aws/lambda/nodejs:22\n(creado on-demand por invocacion)" {
+  style.stroke: "#ea580c"
+  style.stroke-dash: 4
+}
+
+local.browser -> vps.floci: "Tunel SSH cifrado - reenvia puerto 4566"
+vps.floci -> external: "crea contenedor real bajo demanda" {
+  style.stroke: "#ea580c"
+  style.stroke-dash: 4
+}

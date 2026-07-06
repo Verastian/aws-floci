@@ -1,0 +1,20 @@
+direction: right
+
+lambda: "Funcion Lambda" {
+  style.fill: "#f97316"
+  style.font-color: white
+}
+rol: "Rol de Ejecucion IAM" {
+  style.fill: "#8b5cf6"
+  style.font-color: white
+}
+politica: "Politica de Permisos\n(escribir logs, leer BD)" {
+  style.fill: "#ecc94b"
+  style.font-color: "#1a202c"
+}
+
+lambda -> rol: "1. Asume el rol (Trust Policy)"
+rol -> politica: "2. Otorga permisos definidos"
+lambda -> politica: "3. Actua con los permisos resultantes" {
+  style.stroke-dash: 4
+}
