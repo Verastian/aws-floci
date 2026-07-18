@@ -1,0 +1,11 @@
+[Unit]
+Description=Corre floci-lambda-runtime-guard poco despues del prune diario de Docker (00:41 UTC, /etc/cron.d/docker-image-prune)
+
+[Timer]
+OnCalendar=*-*-* 00:45:00
+OnBootSec=2min
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

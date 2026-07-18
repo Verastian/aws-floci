@@ -1,0 +1,8 @@
+[Unit]
+Description=Restaura la imagen del runtime de Lambda (nodejs:22) si el prune diario de Docker la borro
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/floci/floci-lambda-runtime-guard.sh

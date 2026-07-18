@@ -204,3 +204,38 @@ Cambio de código asociado: `frontend/app.js` — `API_BASE` ahora se elige en t
 El túnel SSH (`floci-tunnel.service`) **sigue siendo necesario** para todo lo administrativo (desplegar Lambdas nuevas, crear buckets, correr `aws cli`) — eso nunca se expuso públicamente, a propósito, porque Floci no tiene autenticación real.
 
 De paso se encontró y corrigió un problema preexistente no relacionado: la imagen `public.ecr.aws/lambda/nodejs:22` había desaparecido del caché de Docker del VPS, causando que **todas** las Lambdas devolvieran 502 (`Lambda.InitError: No such image`) incluso por el túnel. Se resolvió con `docker pull` de esa imagen en el VPS.
+
+## 15. Incidente: caída completa del Quiz por pérdida de la imagen del runtime de Lambda (2026-07-18)
+
+### Síntoma
+
+`https://floci.devera.cloud/restapis/f3744ef7e3/$default/_user_request_/categories` (y el resto de endpoints) devolvía `502` tanto público como por el túnel. El frontend estático (`/site/quiz-frontend/`) seguía en `200` — el problema era solo de las Lambdas, no de S3/nginx/túnel/RDS (todos verificados sanos).
+
+`aws lambda invoke --function-name quiz-categories --profile floci` confirmó la causa exacta:
+
+```json
+{"errorMessage":"Failed to start Lambda container: Status 404: {\"message\":\"No such image: public.ecr.aws/lambda/nodejs:22\"}\n","errorType":"Lambda.InitError"}
+```
+
+Este es el mismo síntoma ya visto "de paso" en la sección 14 y en `quiz-avanzado/docs/PLAN-SERVICIOS-AVANZADOS.md` — pero esta vez causó una caída real y visible, no solo un hallazgo incidental durante otro trabajo.
+
+### Causa raíz (encontrada esta vez, no solo el síntoma)
+
+El VPS tiene un cron **preexistente y ajeno a este repo**, `/etc/cron.d/docker-image-prune` (creado 2026-04-16, antes de este proyecto):
+
+```
+41 0 * * * root docker image prune -af --filter "until=24h"
+```
+
+Corre todos los días a las 00:41 UTC y borra cualquier imagen Docker sin contenedor activo con más de 24h de antigüedad. Floci lanza un contenedor nuevo por cada invocación de Lambda y lo destruye al terminar (confirmado: mientras un contenedor de invocación sigue vivo, `docker rmi` de la imagen falla con "must be forced" por estar en uso) — así que en cuanto no queda ningún contenedor de esa imagen corriendo, `nodejs:22` queda "sin uso" y el prune diario la borra. Las 13 Lambdas de los 3 proyectos de este repo (`hello-world`, `quiz`, `quiz-avanzado`) comparten esa misma imagen, así que el impacto siempre es total, nunca parcial.
+
+### Prevención implementada
+
+En vez de tocar el cron ajeno (podría ser gestionado por otra automatización del hosting), se agregó un temporizador de `systemd` que **restaura la imagen si falta**, corriendo poco después del prune — mismo patrón autocurativo que `floci-tunnel.service` (ver `plataforma/PLAN.md`), pero del lado del VPS en vez del cliente:
+
+- `plataforma/scripts/floci-lambda-runtime-guard.sh` — si `public.ecr.aws/lambda/nodejs:22` no está en caché, la vuelve a descargar; si está, no hace nada.
+- `plataforma/systemd/floci-lambda-runtime-guard.service` + `.timer` — el timer dispara el servicio a las 00:45 UTC (4 min después del prune) y también `OnBootSec=2min` por si el VPS se reinicia; `Persistent=true` para que corra igual si el VPS estuvo apagado a esa hora.
+
+Instalado en el VPS en `/opt/floci/floci-lambda-runtime-guard.sh` + `/etc/systemd/system/floci-lambda-runtime-guard.{service,timer}`, habilitado con `systemctl enable --now floci-lambda-runtime-guard.timer`. Verificado con `systemctl start floci-lambda-runtime-guard.service` seguido de `journalctl -u floci-lambda-runtime-guard.service`, que confirma `OK: ... presente` cuando la imagen está cacheada.
+
+Diagnóstico rápido si vuelve a pasar: `aws lambda invoke --function-name quiz-categories --profile floci out.json && cat out.json` (200 con JSON = sano; `Lambda.InitError` = falta la imagen). Para confirmar que el guard está activo: `systemctl status floci-lambda-runtime-guard.timer` en el VPS.
