@@ -10,6 +10,9 @@ node_modules/
 # Archivo de diseño de referencia (bundle grande, no es código fuente propio)
 proyectos/quiz/data/
 
+# Preguntas/respuestas del Quiz extraídas de RDS (contenido del quiz, no debe subirse al repo — pedido explícito, 2026-07-18)
+proyectos/quiz/contenido/
+
 # Por si alguna vez se crea un .env local (las plantillas *.env.example sí se suben)
 .env
 .env.*
