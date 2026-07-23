@@ -1,0 +1,41 @@
+direction: right
+
+apigw: "Amazon API Gateway\nquiz-avanzado-api" {
+  icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-API-Gateway_light-bg.svg
+  shape: image
+}
+
+lambdas: "AWS Lambda (x6)\ncategories, questions, answer,\nsubmit, ranking, badges" {
+  icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+  shape: image
+}
+
+rds: "Amazon RDS\nquiz-avanzado-db" {
+  icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+  shape: image
+}
+
+logs: "CloudWatch Logs\n/aws/lambda/quiz-avanzado-*\n✅ automático, sin configurar nada" {
+  icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
+  shape: image
+}
+
+metrics: "CloudWatch Metrics\nnamespace AWS/Lambda\n(Invocations, Errors, Duration)\n❌ no se genera en Floci" {
+  icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
+  shape: image
+  style.opacity: 0.4
+  style.stroke-dash: 4
+}
+
+vos: "Vos / tu equipo\n`aws logs tail`, `get-log-events`,\nconsola de CloudWatch" {
+  style.fill: "#ede9fe"
+}
+
+apigw -> lambdas: "invoca (por ruta)"
+lambdas -> rds: "SQL"
+lambdas -> logs: "console.log / console.error\n(cada invocación)"
+logs -> vos: "consultás cuando\nhace falta debuggear"
+lambdas -> metrics: "get-metric-statistics\ndevuelve vacío" {
+  style.stroke-dash: 4
+  style.opacity: 0.4
+}

@@ -88,17 +88,82 @@ Al crear `quiz-avanzado` (ver `PLAN-SERVICIOS-AVANZADOS.md`, "Contexto de este f
 
 ---
 
-## 2. CloudWatch: logs y métricas
+## 2. <img src="./imgs/Icono%20-%20Amazon%20CloudWatch.png" width="28" valign="middle"> CloudWatch: logs y métricas
 
-### Concepto
+✅ **Implementado y probado el 2026-07-23**, contra `quiz-avanzado`.
 
-**Amazon CloudWatch** es el servicio central de observabilidad de AWS: recolecta **logs** (texto que tu código escribe, ej. con `console.log`) y **métricas** (números a lo largo del tiempo: cuántas veces se invocó una Lambda, cuántos errores tuvo, cuánto tardó).
+### 2.1 En una frase
 
-Cuando una Lambda corre en AWS real, **todo lo que escribas con `console.log` termina automáticamente en un grupo de logs de CloudWatch** con el nombre `/aws/lambda/<nombre-de-la-funcion>` — no tienes que configurar nada para que esto pase, es el comportamiento por defecto. Es la forma estándar de debuggear una Lambda en producción: no tienes acceso a una terminal "dentro" de la función como con un servidor tradicional, así que los logs son tu principal ventana a lo que está pasando.
+**Amazon CloudWatch** es la "libreta de bitácora" de tu nube: cada vez que un programa (una Lambda, en este proyecto) escribe algo con `console.log` o falla con un error, CloudWatch lo anota con fecha y hora, sin que tengas que pedirlo. Después puedes abrir esa libreta y ver exactamente qué pasó, incluso si el programa ya terminó de correr hace rato.
 
-### Cómo quedó implementado
+### 2.2 Por qué hace falta (el problema que resuelve)
 
-🔜 Pendiente (Fase 2 del plan) — incluyendo la verificación de si Floci reenvía esto automáticamente o si requiere configuración adicional.
+Con un servidor tradicional, si algo falla, uno se conecta por SSH y mira directamente qué está pasando "ahí adentro". Una Lambda no tiene ningún "adentro" al que conectarse: aparece, corre un par de segundos, y desaparece. Sin un lugar externo que guarde lo que escribió mientras vivía, cualquier pista sobre un error se perdería para siempre en el momento en que la Lambda termina. CloudWatch es exactamente ese lugar externo — y en AWS real es **automático**: no hay que instalar nada ni configurar un "agente de logs" como harías con un servidor propio.
+
+### 2.3 El concepto, paso a paso
+
+Tres palabras nuevas que conviene distinguir, con la metáfora del cuaderno:
+
+![Concepto: de tu código a CloudWatch Logs](./imgs/AWS-FLOCI%20-%20Concepto%20Log%20Group%20Stream%20Event.png)
+
+- **Log Group** ("el cuaderno"): uno por función. En este proyecto hay 6, uno por cada Lambda (`/aws/lambda/quiz-avanzado-categories`, `.../questions`, etc.).
+- **Log Stream** ("una página del cuaderno"): agrupa los eventos de una misma "tanda" de ejecuciones (en la práctica, se abre una página nueva por día y por versión de la función).
+- **Log Event** ("una línea escrita"): el mensaje concreto, con timestamp y el id de la invocación que lo generó — lo que efectivamente escribiste con `console.log`.
+
+CloudWatch también tiene un segundo concepto, **métricas** (números a lo largo del tiempo — cuántas invocaciones, cuántos errores, cuánto tardó cada una), que en AWS real se genera automáticamente para cualquier Lambda bajo el namespace `AWS/Lambda`. Como se ve más abajo, esta parte **no** está disponible en Floci.
+
+### 2.4 Cómo funciona en este proyecto (`quiz-avanzado`)
+
+![Arquitectura: las 6 Lambdas, CloudWatch Logs y CloudWatch Metrics](./imgs/AWS-FLOCI%20-%20Arquitectura%20CloudWatch%20quiz-avanzado.png)
+
+**Hallazgo 1 — los logs sí son automáticos en Floci, igual que en AWS real.** Antes de esta fase, ninguna de las 6 Lambdas de `quiz-avanzado` escribía nada con `console.log` (el código solo devolvía errores al cliente, nunca los registraba). Se agregó una línea de log al entrar a cada handler y un `console.error` en cada bloque `catch` — un cambio mínimo, sin lógica nueva, solo para tener algo que observar. Tras redesplegar y volver a invocar las 6 funciones, el log apareció en CloudWatch sin ninguna configuración adicional, con el mismo formato que en AWS real (`timestamp` + `request id` + `INFO`/`ERROR` + mensaje):
+
+```
+2026-07-23T20:05:47.811Z  8153bb2f-d020-44a0-8cc7-c3946dc0116b  INFO  categories: listando categorias
+```
+
+**Hallazgo 2 — las métricas (`AWS/Lambda`) no están implementadas en Floci.** `aws cloudwatch list-metrics --namespace AWS/Lambda` devuelve siempre una lista vacía, y `get-metric-statistics` sobre `Invocations`/`Errors`/`Duration` de cualquiera de las 6 funciones devuelve `Datapoints: []`, aunque las funciones ya se invocaron varias veces. Conclusión: en Floci, **CloudWatch cubre logs, no métricas** — para ver "cuántas veces se llamó cada endpoint" hay que contar manualmente los log events, no confiar en la consola de métricas como harías en AWS real.
+
+**Hallazgo 3 — bug de `aws-cli` al usar `logs tail` contra Floci.** El comando más cómodo para seguir logs en vivo, `aws logs tail /aws/lambda/<funcion> --profile floci`, falla con `aws: [ERROR]: 'logStreamName'` contra este emulador (la respuesta de Floci a la llamada interna que usa `tail` le falta un campo que el cliente de AWS espera). Alternativa que sí funciona siempre, usada para verificar todo lo anterior: `describe-log-streams` para encontrar el stream más reciente + `get-log-events` para leer su contenido (comandos exactos en la sección "Cómo verificarlo tú mismo").
+
+### 2.5 Cómo verificarlo tú mismo
+
+Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el perfil `floci` de `aws-cli` configurado — ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2](../../quiz/docs/GUIA-PASO-A-PASO.md#2-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca) si no los tienes listos.
+
+1. **Generar una invocación real** (cualquiera de las 6 rutas sirve; esta usa `categories`, la más simple):
+   ```bash
+   curl -s "http://localhost:4566/restapis/a7f3682d91/\$default/_user_request_/categories"
+   ```
+2. **Confirmar que existe el Log Group** (uno por función, creado automáticamente):
+   ```bash
+   aws logs describe-log-groups --log-group-name-prefix /aws/lambda/quiz-avanzado --profile floci
+   ```
+3. **Encontrar el stream con contenido más reciente** (no uses `aws logs tail`, ver Hallazgo 3):
+   ```bash
+   aws logs describe-log-streams \
+     --log-group-name /aws/lambda/quiz-avanzado-categories \
+     --profile floci --output json \
+     | python3 -c "import json,sys; d=json.load(sys.stdin); s=[x for x in d['logStreams'] if x.get('storedBytes',0)>0]; print(s[-1]['logStreamName'] if s else 'sin contenido aun')"
+   ```
+4. **Leer el contenido de ese stream** (reemplaza `<stream>` por el valor que imprimió el paso anterior):
+   ```bash
+   aws logs get-log-events \
+     --log-group-name /aws/lambda/quiz-avanzado-categories \
+     --log-stream-name '<stream>' --profile floci
+   ```
+   Deberías ver algo como `"categories: listando categorias"`.
+5. **Confirmar el hallazgo de las métricas** (espera que devuelva vacío — es el comportamiento conocido en Floci, no un error tuyo):
+   ```bash
+   aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Invocations \
+     --dimensions Name=FunctionName,Value=quiz-avanzado-categories \
+     --start-time "$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%S)" \
+     --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+     --period 300 --statistics Sum --profile floci
+   ```
+
+### 2.6 Qué cambió en el código
+
+Cada una de las 6 Lambdas (`lambda/{categories,questions,answer,submit,ranking,badges}/index.js`) ganó dos líneas: un `console.log` al entrar al handler (con el parámetro relevante, ej. `categoria` o `username`, para poder rastrear invocaciones puntuales) y un `console.error` en el bloque `catch` existente (antes, el error solo se devolvía al cliente en la respuesta HTTP, nunca quedaba registrado del lado del servidor). No se agregó ninguna dependencia nueva — el runtime `nodejs22.x` ya expone `console` globalmente, y Floci se encarga de reenviarlo a CloudWatch por sí solo.
 
 ---
 

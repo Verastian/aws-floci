@@ -37,6 +37,7 @@ exports.handler = async (event) => {
   if (!username) {
     return respond(400, { error: "username es requerido" });
   }
+  console.log(`badges: calculando medallas de username=${username}`);
 
   const client = new Client();
   await client.connect();
@@ -44,6 +45,7 @@ exports.handler = async (event) => {
     const medallas = await calcularMedallas(client, username);
     return respond(200, medallas);
   } catch (err) {
+    console.error(`badges: error calculando medallas de username=${username}`, err);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

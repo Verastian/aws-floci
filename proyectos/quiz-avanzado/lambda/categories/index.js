@@ -1,6 +1,7 @@
 const { Client } = require("pg");
 
 exports.handler = async () => {
+  console.log("categories: listando categorias");
   const client = new Client();
   await client.connect();
   try {
@@ -13,6 +14,7 @@ exports.handler = async () => {
     `);
     return respond(200, rows);
   } catch (err) {
+    console.error("categories: error consultando categorias", err);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

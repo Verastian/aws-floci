@@ -48,6 +48,7 @@ exports.handler = async (event) => {
   if (!username || !categoria || !Array.isArray(respuestas) || respuestas.length === 0) {
     return respond(400, { error: "username, categoria y respuestas son requeridos" });
   }
+  console.log(`submit: cerrando intento de username=${username} categoria=${categoria} respuestas=${respuestas.length}`);
 
   const client = new Client();
   await client.connect();
@@ -126,6 +127,7 @@ exports.handler = async (event) => {
       medallas,
     });
   } catch (err) {
+    console.error(`submit: error cerrando intento de username=${username}`, err);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

@@ -2,6 +2,7 @@ const { Client } = require("pg");
 
 exports.handler = async (event) => {
   const categoria = event.queryStringParameters && event.queryStringParameters.categoria;
+  console.log(`ranking: consultando tabla${categoria ? ` categoria=${categoria}` : " (todas las categorias)"}`);
 
   const client = new Client();
   await client.connect();
@@ -21,6 +22,7 @@ exports.handler = async (event) => {
     const { rows } = await client.query(query, params);
     return respond(200, rows);
   } catch (err) {
+    console.error("ranking: error consultando tabla", err);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

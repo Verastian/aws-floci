@@ -15,6 +15,7 @@ exports.handler = async (event) => {
   if (!pregunta_id || !Array.isArray(opciones_seleccionadas)) {
     return respond(400, { error: "pregunta_id y opciones_seleccionadas son requeridos" });
   }
+  console.log(`answer: evaluando pregunta_id=${pregunta_id}`);
 
   const client = new Client();
   await client.connect();
@@ -43,6 +44,7 @@ exports.handler = async (event) => {
       explicacion: explRes.rows[0] || null,
     });
   } catch (err) {
+    console.error(`answer: error evaluando pregunta_id=${pregunta_id}`, err);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

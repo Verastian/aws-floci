@@ -9,8 +9,8 @@
 > ver [`proyectos/quiz/docs/ARQUITECTURA.md`](../../quiz/docs/ARQUITECTURA.md) del proyecto
 > original; aquí solo se documenta lo específico de este fork y de los servicios avanzados.
 
-**Fecha:** 2026-07-04, actualizado 2026-07-05
-**Estado:** Fase 1 heredada del original (ver abajo, no requiere trabajo aquí). El resto sigue planificado.
+**Fecha:** 2026-07-04, actualizado 2026-07-23
+**Estado:** Fase 1 heredada del original (ver abajo, no requiere trabajo aquí). Fase 2 (CloudWatch) implementada y probada el 2026-07-23. El resto sigue planificado.
 **Documento hermano:** [`GUIA-SERVICIOS-AVANZADOS.md`](./GUIA-SERVICIOS-AVANZADOS.md) — ahí se explica el concepto de cada servicio y se irá documentando cómo quedó implementado, fase por fase.
 
 ---
@@ -34,10 +34,12 @@
 - Se pueden implementar de a una, o varias juntas, según convenga — no es obligatorio seguir el orden exacto en que están numeradas.
 - Cada casillero se marca `[x]` recién cuando está implementado **y probado** (no al planificarlo).
 - El detalle técnico exacto de "cómo se hizo" (comandos reales, código) se documenta en `GUIA-SERVICIOS-AVANZADOS.md` a medida que se ejecuta cada fase — algunos detalles finos (ej. si Floci reenvía automáticamente los logs de Lambda a su CloudWatch emulado) se confirman recién al implementar, no se inventan de antemano.
-- **Cada fase que se implemente debe documentarse de dos formas**, no solo una (convención establecida el 2026-07-05, ver [`proyectos/quiz/docs/AWS-PARA-PRINCIPIANTES.md`](../../quiz/docs/AWS-PARA-PRINCIPIANTES.md) como referencia del segundo formato):
-  1. **Técnica**, acá y en `GUIA-SERVICIOS-AVANZADOS.md` — comandos reales, decisiones de Floci vs. AWS real, incidentes encontrados. Para quien va a operar/extender esto.
-  2. **Simplificada, enfocada solo en AWS** — sin mencionar Floci/Docker/VPS/túnel, con analogías y diagramas, pensada para alguien que recién está aprendiendo el servicio en cuestión (ej. al implementar Secrets Manager, agregar una sección nueva a un documento tipo `AWS-PARA-PRINCIPIANTES.md` de este proyecto explicando *qué es* Secrets Manager y *por qué* importa, igual que se hizo para S3/Lambda/API Gateway/RDS/VPC en el del original).
-- **Diagramas**: se usa Lucid liberalmente, no solo para arquitectura AWS — también para flujos de conexión (ej. diagramas de secuencia) y para diagramas abstractos/mentales que ayuden a entender un concepto en general (ej. la analogía del restaurante o el modelo cliente-servidor-base de datos del documento simplificado). Los diagramas de este proyecto viven en la carpeta de Lucid "AWS-FLOCI Diagramas".
+- **Cada fase que se implemente debe documentar ambas audiencias dentro de `GUIA-SERVICIOS-AVANZADOS.md`**, no en un archivo aparte (decisión 2026-07-23 — el borrador original de este plan pedía un segundo archivo estilo `AWS-PARA-PRINCIPIANTES.md`, pero eso choca con el límite de 2 archivos que fija `CLAUDE.md` para `quiz-avanzado/docs/`; se prefirió respetar ese límite antes que crear un tercer archivo). En la práctica, cada sección de la guía tiene capas explícitas, de la más simple a la más técnica:
+  1. **En una frase / analogía**, con un diagrama de concepto — para alguien sin conocimiento previo del servicio.
+  2. **Por qué hace falta / cómo funciona en general** — el concepto en AWS real, sin mencionar Floci/Docker/VPS/túnel todavía.
+  3. **Cómo funciona en este proyecto** — comandos reales, decisiones de Floci vs. AWS real, incidentes encontrados, diagrama de arquitectura con los recursos reales de `quiz-avanzado`.
+  4. **Cómo verificarlo tú mismo** — pasos manuales exactos y reproducibles para comprobar el servicio recién implementado.
+- **Diagramas**: se usan liberalmente, no solo para arquitectura AWS — también para flujos de conexión (diagramas de secuencia) y para diagramas abstractos/mentales que ayuden a entender un concepto en general. Desde 2026-07-05 se construyen con **D2** (no Lucid, salvo el diagrama de arquitectura general de cada proyecto — ver `CLAUDE.md` raíz), con al menos: un ícono suelto para acompañar el título de cada sección, un diagrama de concepto para la analogía, y un diagrama de arquitectura técnico. Fuentes en `docs/diagramas/`, renders en `docs/imgs/`.
 
 ---
 
@@ -51,12 +53,14 @@ Esto **no se implementa en este proyecto**: ya se hizo una sola vez, a nivel pla
 
 **Nota**: esto no reemplaza el túnel SSH (`floci-tunnel.service`) para tareas administrativas (desplegar Lambdas, crear buckets, `aws cli` en general) — sigue siendo necesario para eso, también en este proyecto.
 
-## Fase 2 — Observabilidad: CloudWatch Logs + Monitoring — *independiente*
+## Fase 2 — Observabilidad: CloudWatch Logs + Monitoring — *independiente* — ✅ implementada y probada (2026-07-23)
 
-- [ ] Verificar si Floci ya envía automáticamente la salida de las Lambdas a su CloudWatch Logs emulado (comportamiento esperado, a confirmar): `aws logs tail /aws/lambda/quiz-submit --follow --profile floci`.
-- [ ] Si no lo hace automáticamente, investigar si hace falta alguna configuración adicional.
-- [ ] Probar consultando logs de una invocación real de cada una de las 6 Lambdas.
-- [ ] (Opcional) Explorar `aws cloudwatch get-metric-statistics` para ver métricas de invocaciones/errores.
+- [x] Verificar si Floci ya envía automáticamente la salida de las Lambdas a su CloudWatch Logs emulado — **sí**, confirmado: no requiere ninguna configuración adicional, igual que en AWS real (`aws logs tail` en sí tiene un bug contra Floci, ver hallazgo 3 en la guía — se verifica con `describe-log-streams` + `get-log-events` en su lugar).
+- [x] Si no lo hace automáticamente, investigar si hace falta alguna configuración adicional — N/A, ya lo hace automáticamente.
+- [x] Probar consultando logs de una invocación real de cada una de las 6 Lambdas — las 6 recibieron una línea de `console.log` (agregada en esta fase, antes no logueaban nada) y se confirmó que llegó a CloudWatch.
+- [x] (Opcional) Explorar `aws cloudwatch get-metric-statistics` para ver métricas de invocaciones/errores — probado; namespace `AWS/Lambda` no está implementado en Floci (`list-metrics` y `get-metric-statistics` devuelven siempre vacío). CloudWatch en Floci cubre logs, no métricas.
+
+Detalle completo (analogía, arquitectura, comandos de verificación manual): [`GUIA-SERVICIOS-AVANZADOS.md` §2](./GUIA-SERVICIOS-AVANZADOS.md#2-cloudwatch-logs-y-métricas).
 
 ## Fase 3 — Gestión de secretos: Secrets Manager + KMS — *independiente, conviene antes de la Fase 7*
 

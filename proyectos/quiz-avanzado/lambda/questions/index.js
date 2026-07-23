@@ -7,6 +7,7 @@ exports.handler = async (event) => {
   if (!slug) {
     return respond(400, { error: "falta el parametro categoria" });
   }
+  console.log(`questions: listando preguntas de categoria=${slug}`);
 
   const client = new Client();
   await client.connect();
@@ -43,6 +44,7 @@ exports.handler = async (event) => {
 
     return respond(200, preguntas);
   } catch (err) {
+    console.error(`questions: error consultando categoria=${slug}`, err);
     return respond(500, { error: err.message });
   } finally {
     await client.end();
