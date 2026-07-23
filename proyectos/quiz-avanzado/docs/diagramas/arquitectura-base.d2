@@ -1,0 +1,36 @@
+direction: right
+
+cliente: "Navegador\n(cualquier persona)" {
+  style.fill: "#ede9fe"
+}
+
+s3: "Amazon S3\nquiz-avanzado-frontend" {
+  icon: https://icons.terrastruct.com/aws%2FStorage%2FAmazon-Simple-Storage-Service-S3_Bucket_light-bg.svg
+  shape: image
+}
+
+apigw: "Amazon API Gateway\nquiz-avanzado-api" {
+  icon: https://icons.terrastruct.com/aws%2FNetworking%20%26%20Content%20Delivery%2FAmazon-API-Gateway_light-bg.svg
+  shape: image
+}
+
+lambdas: "AWS Lambda (x6)\ncategories, questions, answer,\nsubmit, ranking, badges" {
+  icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+  shape: image
+}
+
+roles: "6 roles IAM\nquiz-avanzado-<función>-role\nsolo Trust Policy, sin permisos" {
+  icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identity-and-Access-Management-IAM_Role_light-bg.svg
+  shape: image
+}
+
+rds: "Amazon RDS\nquiz-avanzado-db" {
+  icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+  shape: image
+}
+
+cliente -> s3: "descarga el sitio"
+cliente -> apigw: "fetch a la API"
+apigw -> lambdas: "invoca (por ruta)"
+lambdas -> roles: "asume al arrancar"
+lambdas -> rds: "SQL"

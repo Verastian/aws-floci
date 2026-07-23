@@ -8,6 +8,7 @@
 
 ## Índice
 
+0. [Arquitectura inicial (punto de partida)](#0-arquitectura-inicial-punto-de-partida)
 1. [nginx + DNS: exposición pública controlada](#1-nginx--dns-exposición-pública-controlada)
 2. [CloudWatch: logs y métricas](#2-cloudwatch-logs-y-métricas)
 3. [Secrets Manager + KMS: gestión de credenciales](#3-secrets-manager--kms-gestión-de-credenciales)
@@ -16,6 +17,18 @@
 6. [WAF: seguridad perimetral](#6-waf-seguridad-perimetral)
 7. [CloudFormation: infraestructura como código](#7-cloudformation-infraestructura-como-código)
 8. [Cognito: autenticación real](#8-cognito-autenticación-real)
+
+---
+
+## 0. Arquitectura inicial (punto de partida)
+
+Antes de agregar cualquier servicio avanzado, así quedó `quiz-avanzado` el 2026-07-05, al crear el fork (ver "Contexto de este fork" en `PLAN-SERVICIOS-AVANZADOS.md`) — la misma arquitectura que el Quiz original, sin ningún servicio de este documento todavía:
+
+![Arquitectura inicial de quiz-avanzado](./imgs/AWS-FLOCI%20-%20Arquitectura%20inicial%20quiz-avanzado.png)
+
+Cinco piezas nada más: el bucket S3 sirve el sitio estático, la API Gateway enruta cada pedido a la Lambda que corresponde, las 6 Lambdas hacen el trabajo real consultando RDS, y cada Lambda tiene su propio rol IAM — pero, en este punto, ese rol solo tiene **Trust Policy** (define quién puede *asumir* el rol; en este caso, el servicio Lambda) y **ninguna Permission Policy** (qué puede *hacer* una vez asumido) — Floci no la exigía para leer/escribir en RDS o S3. Ese detalle importa: es el "antes" que la sección 2 (CloudWatch) viene a cambiar.
+
+Cada sección de este documento, a partir de acá, parte de esta misma arquitectura y le va agregando una pieza — no son diagramas aislados por servicio, sino capas sobre este mismo dibujo.
 
 ---
 
@@ -122,6 +135,8 @@ CloudWatch también tiene un segundo servicio hermano pero **independiente**, **
 
 ### 2.5 Cómo funciona en este proyecto (`quiz-avanzado`)
 
+Sobre la [arquitectura inicial](#0-arquitectura-inicial-punto-de-partida) (S3 + API Gateway + 6 Lambdas + RDS), esta fase agrega la rama de CloudWatch:
+
 ![Arquitectura: las 6 Lambdas, CloudWatch Logs y CloudWatch Metrics](./imgs/AWS-FLOCI%20-%20Arquitectura%20CloudWatch%20quiz-avanzado.png)
 
 **Hallazgo 1 — los logs sí son automáticos en Floci, igual que en AWS real.** Antes de esta fase, ninguna de las 6 Lambdas de `quiz-avanzado` escribía nada con `console.log` (el código solo devolvía errores al cliente, nunca los registraba). Se agregó una línea de log al entrar a cada handler y un `console.error` en cada bloque `catch` — un cambio mínimo, sin lógica nueva, solo para tener algo que observar. Tras redesplegar y volver a invocar las 6 funciones, el log apareció en CloudWatch sin ninguna configuración adicional, con el mismo formato que en AWS real (`timestamp` + `request id` + `INFO`/`ERROR` + mensaje):
@@ -146,7 +161,18 @@ aws cloudwatch get-metric-statistics --namespace "QuizAvanzado/Lambda" --metric-
 # → Datapoints: [{ "Sum": 1.0, ... }]
 ```
 
-Esto fue, además, **el primer permiso IAM real que recibió un rol de este proyecto** (`cloudwatch:PutMetricData`, política inline `PublishCloudWatchMetrics` en cada uno de los 6 roles) — hasta ahora todos los roles solo tenían *trust policy*, sin política de permisos adjunta. La Fase 3 (Secrets Manager) iba a reclamar ese honor; queda anotado en el plan que en realidad fue esta fase.
+Esto fue, además, **el primer permiso IAM real que recibió un rol de este proyecto** (`cloudwatch:PutMetricData`, política inline `PublishCloudWatchMetrics` en cada uno de los 6 roles) — hasta ahora todos los roles solo tenían la *trust policy* de la [arquitectura inicial](#0-arquitectura-inicial-punto-de-partida), sin ninguna *permission policy* adjunta. La Fase 3 (Secrets Manager) iba a reclamar ese honor; queda anotado en el plan que en realidad fue esta fase. Vale la pena detenerse acá porque es la primera vez que este proyecto usa la diferencia entre estos dos tipos de política — un concepto que suele confundir a quien recién aprende IAM:
+
+![El mismo rol IAM, antes y después del primer permiso](./imgs/AWS-FLOCI%20-%20IAM%20antes%20y%20despues%20del%20permiso.png)
+
+- La **Trust Policy** nunca cambió: sigue diciendo "el servicio Lambda puede asumir este rol", exactamente igual que en la arquitectura inicial.
+- Lo nuevo es la **Permission Policy** (`PublishCloudWatchMetrics`): una vez asumido el rol, ahora sí puede hacer algo con él (llamar a `cloudwatch:PutMetricData`).
+
+Y así se usan las dos juntas en tiempo de ejecución, en cada invocación real de `categories`:
+
+![Flujo de autorización: asumir el rol y usar el permiso](./imgs/AWS-FLOCI%20-%20Flujo%20de%20autorizacion%20IAM.png)
+
+Primero se resuelve **quién es** la Lambda (la Trust Policy, al arrancar, entrega credenciales temporales); después, en cada llamada a una API de AWS, se resuelve **qué puede hacer** con esa identidad (la Permission Policy, evaluada en el momento de la llamada). Son dos preguntas distintas, respondidas por dos políticas distintas — de ahí que agregar el permiso no tocara la *trust policy* para nada.
 
 Lo que **sigue sin ocurrir** es la parte 100% automática de AWS real: ahí, cualquier Lambda publica sola sus métricas estándar bajo el namespace `AWS/Lambda`, sin que el código tenga que llamar a ningún SDK. Floci no emula ese cableado interno — `get-metric-statistics` sobre `AWS/Lambda` sigue devolviendo siempre vacío, sin importar cuánto se invoquen las funciones. La diferencia con lo de arriba: `QuizAvanzado/Lambda` lo publica *nuestro propio código*, explícitamente; `AWS/Lambda` lo publicaría el motor de Lambda *sin que nuestro código haga nada*, y eso es justamente lo que Floci no tiene implementado.
 

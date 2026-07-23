@@ -1,0 +1,12 @@
+shape: sequence_diagram
+
+lambda: "AWS Lambda\n(código de categories)"
+rol: "Rol IAM\nquiz-avanzado-categories-role"
+cloudwatch: "CloudWatch Metrics"
+
+lambda -> rol: "1. al arrancar, intenta asumir el rol"
+rol -> lambda: "2. Trust Policy dice que sí\n→ entrega credenciales temporales"
+lambda -> cloudwatch: "3. PutMetricDataCommand"
+cloudwatch -> rol: "4. ¿tiene cloudwatch:PutMetricData?"
+rol -> cloudwatch: "5. Permission Policy dice que sí\n(desde la Fase 2) → Allow"
+cloudwatch -> lambda: "6. 200 OK, métrica guardada"

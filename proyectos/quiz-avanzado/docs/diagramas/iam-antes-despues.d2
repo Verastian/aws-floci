@@ -1,0 +1,28 @@
+mapa: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  grid-rows: 2
+  grid-columns: 2
+  horizontal-gap: 140
+  vertical-gap: 40
+
+  antes_titulo: "Rol IAM — Fases 0-1" {
+    icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identity-and-Access-Management-IAM_Role_light-bg.svg
+    shape: image
+  }
+  despues_titulo: "El mismo rol — desde la Fase 2" {
+    icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identity-and-Access-Management-IAM_Role_light-bg.svg
+    shape: image
+  }
+
+  antes_detalle: "✅ Trust Policy\n(lambda.amazonaws.com\npuede asumir el rol)\n\n❌ Sin Permission Policy\n(no puede llamar\nninguna API de AWS)" {
+    style.fill: "#fee2e2"
+  }
+  despues_detalle: "✅ Trust Policy\n(igual que antes)\n\n✅ Permission Policy nueva:\nPublishCloudWatchMetrics\n→ cloudwatch:PutMetricData\npermitido" {
+    style.fill: "#dcfce7"
+  }
+}
+
+mapa.antes_detalle -> mapa.despues_detalle: "put-role-policy\n(Fase 2)" {
+  style.stroke-dash: 4
+}
