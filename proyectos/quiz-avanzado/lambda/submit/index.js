@@ -1,4 +1,23 @@
 const { Client } = require("pg");
+const { CloudWatchClient, PutMetricDataCommand } = require("@aws-sdk/client-cloudwatch");
+
+const cw = new CloudWatchClient({});
+const FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+async function publicarMetricas(errores, duracionMs) {
+  try {
+    await cw.send(new PutMetricDataCommand({
+      Namespace: "QuizAvanzado/Lambda",
+      MetricData: [
+        { MetricName: "Invocations", Value: 1, Unit: "Count", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+        { MetricName: "Errors", Value: errores, Unit: "Count", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+        { MetricName: "Duration", Value: duracionMs, Unit: "Milliseconds", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+      ],
+    }));
+  } catch (err) {
+    console.error(`${FUNCTION_NAME}: no se pudo publicar metricas en CloudWatch`, err);
+  }
+}
 
 // Deben coincidir con AVATARES / COLORES en frontend/app.js
 const AVATARES_VALIDOS = new Set(["🚀", "🤖", "🐍", "🐧", "☁️", "🔥", "⚡", "🎯", "🧠", "💡", "🛰️", "🔐", "📦", "🌐", "🎮", "🦾"]);
@@ -49,6 +68,7 @@ exports.handler = async (event) => {
     return respond(400, { error: "username, categoria y respuestas son requeridos" });
   }
   console.log(`submit: cerrando intento de username=${username} categoria=${categoria} respuestas=${respuestas.length}`);
+  const inicio = Date.now();
 
   const client = new Client();
   await client.connect();
@@ -117,6 +137,7 @@ exports.handler = async (event) => {
     const flags = medallaRows[0] || {};
     const medallas = MEDALLAS_INFO.map((m) => ({ ...m, desbloqueada: Boolean(flags[m.id]) }));
 
+    await publicarMetricas(0, Date.now() - inicio);
     return respond(200, {
       puntaje,
       aciertos,
@@ -128,6 +149,7 @@ exports.handler = async (event) => {
     });
   } catch (err) {
     console.error(`submit: error cerrando intento de username=${username}`, err);
+    await publicarMetricas(1, Date.now() - inicio);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

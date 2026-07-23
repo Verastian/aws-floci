@@ -1,0 +1,32 @@
+direction: right
+
+metrica: "Métrica\n(ej. Errors de una Lambda)" {
+  style.fill: "#dbeafe"
+}
+umbral: "Umbral definido\npor vos (ej. > 0 en 60s)" {
+  style.fill: "#bfdbfe"
+}
+evaluacion: "Evaluación periódica\nautomática, cada Period\n❌ Floci no la corre" {
+  style.fill: "#f1f5f9"
+  style.stroke-dash: 4
+  style.opacity: 0.5
+}
+estado: "Estado de la alarma\nOK · ALARM · INSUFFICIENT_DATA" {
+  style.fill: "#fde68a"
+}
+accion: "Acción\n(ej. notificar por SNS,\nver Fase 5)" {
+  style.fill: "#fed7aa"
+}
+
+manual: "set-alarm-state\n✅ funciona: fuerza el estado\nsin esperar evaluación" {
+  style.fill: "#ede9fe"
+}
+
+metrica -> umbral: "se compara contra"
+umbral -> evaluacion: "dispara"
+evaluacion -> estado: "cambia" {
+  style.stroke-dash: 4
+  style.opacity: 0.5
+}
+estado -> accion: "si pasa a ALARM"
+manual -> estado: "fuerza el cambio"

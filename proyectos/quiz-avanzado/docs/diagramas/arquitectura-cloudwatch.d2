@@ -20,22 +20,28 @@ logs: "CloudWatch Logs\n/aws/lambda/quiz-avanzado-*\n✅ automático, sin config
   shape: image
 }
 
-metrics: "CloudWatch Metrics\nnamespace AWS/Lambda\n(Invocations, Errors, Duration)\n❌ no se genera en Floci" {
+metrics: "CloudWatch Metrics\nnamespace QuizAvanzado/Lambda\n✅ publicado por el propio código" {
   icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
   shape: image
-  style.opacity: 0.4
-  style.stroke-dash: 4
 }
 
-vos: "Vos / tu equipo\n`aws logs tail`, `get-log-events`,\nconsola de CloudWatch" {
+vos: "Tú / tu equipo" {
   style.fill: "#ede9fe"
 }
 
 apigw -> lambdas: "invoca (por ruta)"
 lambdas -> rds: "SQL"
 lambdas -> logs: "console.log / console.error\n(cada invocación)"
-logs -> vos: "consultás cuando\nhace falta debuggear"
-lambdas -> metrics: "get-metric-statistics\ndevuelve vacío" {
+logs -> vos: "consultas cuando\nhace falta debuggear"
+
+lambdas -> metrics: "Invocations, Errors, Duration\n(PutMetricDataCommand, cada invocación)"
+metrics -> vos: "get-metric-statistics"
+
+metrics_auto: "namespace AWS/Lambda\n(el que publica Lambda solo\nen AWS real)\n❌ Floci todavía no lo emula" {
+  style.opacity: 0.45
   style.stroke-dash: 4
-  style.opacity: 0.4
+}
+lambdas -> metrics_auto: "automático en AWS real" {
+  style.stroke-dash: 4
+  style.opacity: 0.45
 }

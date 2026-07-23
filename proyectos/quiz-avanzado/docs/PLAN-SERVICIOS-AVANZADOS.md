@@ -10,7 +10,7 @@
 > original; aquí solo se documenta lo específico de este fork y de los servicios avanzados.
 
 **Fecha:** 2026-07-04, actualizado 2026-07-23
-**Estado:** Fase 1 heredada del original (ver abajo, no requiere trabajo aquí). Fase 2 (CloudWatch) implementada y probada el 2026-07-23. El resto sigue planificado.
+**Estado:** Fase 1 heredada del original (ver abajo, no requiere trabajo aquí). Fase 2 (CloudWatch: Logs + Metrics + Alarms) implementada y probada a fondo el 2026-07-23. El resto sigue planificado.
 **Documento hermano:** [`GUIA-SERVICIOS-AVANZADOS.md`](./GUIA-SERVICIOS-AVANZADOS.md) — ahí se explica el concepto de cada servicio y se irá documentando cómo quedó implementado, fase por fase.
 
 ---
@@ -53,12 +53,16 @@ Esto **no se implementa en este proyecto**: ya se hizo una sola vez, a nivel pla
 
 **Nota**: esto no reemplaza el túnel SSH (`floci-tunnel.service`) para tareas administrativas (desplegar Lambdas, crear buckets, `aws cli` en general) — sigue siendo necesario para eso, también en este proyecto.
 
-## Fase 2 — Observabilidad: CloudWatch Logs + Monitoring — *independiente* — ✅ implementada y probada (2026-07-23)
+## Fase 2 — Observabilidad: CloudWatch Logs + Metrics + Alarms — *independiente* — ✅ implementada y probada (2026-07-23)
+
+Alcance ampliado el 2026-07-23 respecto al original: no se quedó en "explorar si hay métricas", sino que se implementaron de verdad en las 6 Lambdas, y además se probó Alarms a fondo como diagnóstico (decisión tomada explícitamente: usar el máximo nivel de profundidad que Floci permite para este servicio, antes de avanzar a la Fase 3).
 
 - [x] Verificar si Floci ya envía automáticamente la salida de las Lambdas a su CloudWatch Logs emulado — **sí**, confirmado: no requiere ninguna configuración adicional, igual que en AWS real (`aws logs tail` en sí tiene un bug contra Floci, ver hallazgo 3 en la guía — se verifica con `describe-log-streams` + `get-log-events` en su lugar).
 - [x] Si no lo hace automáticamente, investigar si hace falta alguna configuración adicional — N/A, ya lo hace automáticamente.
 - [x] Probar consultando logs de una invocación real de cada una de las 6 Lambdas — las 6 recibieron una línea de `console.log` (agregada en esta fase, antes no logueaban nada) y se confirmó que llegó a CloudWatch.
-- [x] (Opcional) Explorar `aws cloudwatch get-metric-statistics` para ver métricas de invocaciones/errores — probado; namespace `AWS/Lambda` no está implementado en Floci (`list-metrics` y `get-metric-statistics` devuelven siempre vacío). CloudWatch en Floci cubre logs, no métricas.
+- [x] Implementar CloudWatch Metrics de verdad en las 6 Lambdas (namespace propio `QuizAvanzado/Lambda`: `Invocations`, `Errors`, `Duration`, vía `@aws-sdk/client-cloudwatch`) — confirmado que el servicio guarda y devuelve los datos correctamente. **Esta fue la primera vez que un rol de este proyecto recibió una política de permisos IAM real** (`cloudwatch:PutMetricData`), adelantando lo que la Fase 3 pensaba reclamar como propio (ver nota ahí). Se confirmó también que el runtime `nodejs22.x` **no** trae preinstalado ningún cliente de `@aws-sdk` (ni `client-cloudwatch` ni `client-s3`) — hubo que empaquetarlo con `npm install`, respondiendo de paso una pregunta que estaba pendiente para la Fase 3.
+- [x] Confirmado el límite: el namespace automático `AWS/Lambda` (el que Lambda publicaría solo, sin código propio, en AWS real) sigue vacío en Floci — ese cableado interno no está emulado.
+- [x] Probar CloudWatch Alarms como diagnóstico (no como feature final del proyecto): `put-metric-alarm` funciona y crea la alarma (`INSUFFICIENT_DATA` inicial); la evaluación automática del umbral **no ocurre** (se esperaron más de 2 minutos tras forzar un datapoint que debía dispararla, sin cambio de estado); `describe-alarm-history` devuelve `UnsupportedOperation`; `set-alarm-state` (control manual) funciona al instante. La alarma de prueba se borró al terminar — no quedó como infraestructura permanente. La Fase 5 construye la alarma real (con acción de notificación con propósito de negocio) reusando este hallazgo.
 
 Detalle completo (analogía, arquitectura, comandos de verificación manual): [`GUIA-SERVICIOS-AVANZADOS.md` §2](./GUIA-SERVICIOS-AVANZADOS.md#2-cloudwatch-logs-y-métricas).
 
@@ -67,8 +71,8 @@ Detalle completo (analogía, arquitectura, comandos de verificación manual): [`
 - [ ] Crear un secreto con las credenciales de RDS: `aws secretsmanager create-secret --name quiz/rds-credentials --secret-string '...'`.
 - [ ] (Opcional, más didáctico) Crear una clave KMS propia (`aws kms create-key`) y usarla para cifrar el secreto, en vez de la clave por defecto.
 - [ ] Modificar las 6 Lambdas para leer la contraseña desde Secrets Manager al arrancar (cold start), en vez de la variable de entorno `PGPASSWORD` en texto plano.
-- [ ] Verificar si el runtime `nodejs22.x` ya trae el SDK de AWS incluido (los runtimes de Lambda para Node suelen traer `@aws-sdk/*` preinstalado) o si hay que empaquetarlo.
-- [ ] Adjuntar permiso `secretsmanager:GetSecretValue` al rol IAM de cada Lambda — **primera vez que se le da una política de permisos real a un rol** en este proyecto (hasta ahora los roles solo tenían la *trust policy*, sin política de permisos, porque Floci no la exigía).
+- [x] Verificar si el runtime `nodejs22.x` ya trae el SDK de AWS incluido — **no**, respondido de paso en la Fase 2: hay que empaquetar cada cliente de `@aws-sdk` con `npm install` (confirmado que tampoco viene `@aws-sdk/client-s3`).
+- [ ] Adjuntar permiso `secretsmanager:GetSecretValue` al rol IAM de cada Lambda — la Fase 2 ya adelantó el primer permiso real de este proyecto (`cloudwatch:PutMetricData`), así que esta ya no es la primera vez, pero sigue siendo la primera vez con un permiso de **lectura de secretos**.
 - [ ] Quitar `PGPASSWORD` de las variables de entorno una vez migrado.
 
 ## Fase 4 — Auditoría: CloudTrail — *independiente*
@@ -83,6 +87,7 @@ Detalle completo (analogía, arquitectura, comandos de verificación manual): [`
 - [ ] Crear un tópico SNS (`quiz-high-scores`) y una suscripción (email o SQS).
 - [ ] Modificar la Lambda `submit` para publicar un mensaje cuando el puntaje supere un umbral (ej. ≥ 500 puntos) — requiere permiso `sns:Publish` en su rol.
 - [ ] Crear una regla programada (EventBridge Scheduler) que dispare una Lambda de mantenimiento periódica (ej. una que solo registre un log, a modo de demostración de *scheduled events*).
+- [ ] Construir la alarma real de CloudWatch que quedó pendiente de la Fase 2: sobre una de las métricas custom de `QuizAvanzado/Lambda` (ej. `Errors`), con una acción de notificación real conectada al tópico SNS de este ítem — recordar que la evaluación automática del umbral no funciona en Floci (ver hallazgo de la Fase 2), así que la demostración de "la alarma se disparó" tendrá que apoyarse en `set-alarm-state` en vez de esperar la evaluación real.
 
 ## Fase 6 — Seguridad perimetral: WAF — *depende de la Fase 1 para tener sentido pleno*
 
@@ -92,7 +97,7 @@ Detalle completo (analogía, arquitectura, comandos de verificación manual): [`
 
 ## Fase 7 — Infraestructura como código: CloudFormation — *recomendado después de las Fases 2 a 5*
 
-- [ ] Escribir una plantilla que capture: RDS, las 6 Lambdas + sus roles (ya con permisos reales de la Fase 3), API Gateway + rutas, bucket S3 + hosting estático, el secreto de Secrets Manager, el trail de CloudTrail, el tópico SNS y la regla de EventBridge.
+- [ ] Escribir una plantilla que capture: RDS, las 6 Lambdas + sus roles (ya con permisos reales desde la Fase 2 — CloudWatch Metrics — y la Fase 3 — Secrets Manager), API Gateway + rutas, bucket S3 + hosting estático, el secreto de Secrets Manager, el trail de CloudTrail, el tópico SNS y la regla de EventBridge.
 - [ ] Desplegar con `aws cloudformation deploy` contra Floci.
 - [ ] Comparar contra lo desplegado manualmente (debería quedar equivalente).
 

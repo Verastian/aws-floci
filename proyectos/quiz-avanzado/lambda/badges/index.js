@@ -1,4 +1,23 @@
 const { Client } = require("pg");
+const { CloudWatchClient, PutMetricDataCommand } = require("@aws-sdk/client-cloudwatch");
+
+const cw = new CloudWatchClient({});
+const FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+async function publicarMetricas(errores, duracionMs) {
+  try {
+    await cw.send(new PutMetricDataCommand({
+      Namespace: "QuizAvanzado/Lambda",
+      MetricData: [
+        { MetricName: "Invocations", Value: 1, Unit: "Count", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+        { MetricName: "Errors", Value: errores, Unit: "Count", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+        { MetricName: "Duration", Value: duracionMs, Unit: "Milliseconds", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+      ],
+    }));
+  } catch (err) {
+    console.error(`${FUNCTION_NAME}: no se pudo publicar metricas en CloudWatch`, err);
+  }
+}
 
 // Definicion de las 7 medallas, igual que en frontend/app.js (MEDALLAS_INFO).
 // Cada condicion se evalua sobre TODO el historial del username (todas las
@@ -38,14 +57,17 @@ exports.handler = async (event) => {
     return respond(400, { error: "username es requerido" });
   }
   console.log(`badges: calculando medallas de username=${username}`);
+  const inicio = Date.now();
 
   const client = new Client();
   await client.connect();
   try {
     const medallas = await calcularMedallas(client, username);
+    await publicarMetricas(0, Date.now() - inicio);
     return respond(200, medallas);
   } catch (err) {
     console.error(`badges: error calculando medallas de username=${username}`, err);
+    await publicarMetricas(1, Date.now() - inicio);
     return respond(500, { error: err.message });
   } finally {
     await client.end();

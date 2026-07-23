@@ -1,0 +1,33 @@
+direction: right
+
+lambda: "AWS Lambda\ncontenedor Docker real:\nfloci-quiz-avanzado-<función>-<hash>" {
+  icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+  shape: image
+}
+
+cloudwatch: "CloudWatch Logs\n(API de AWS, emulada por Floci)" {
+  icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
+  shape: image
+}
+
+docker_directo: "El contenedor mismo\n(docker logs)" {
+  style.fill: "#f1f5f9"
+}
+
+vos_portable: "Método A — portátil\naws logs ... --profile floci\n(por el túnel SSH, funciona\nigual contra AWS real)" {
+  style.fill: "#ede9fe"
+}
+
+vos_vps: "Método B — exclusivo de Floci\nSSH directo al VPS + docker logs\n(no existe equivalente en AWS real,\nsolo sirve porque acá SÍ hay Docker)" {
+  style.fill: "#fee2e2"
+}
+
+lambda -> cloudwatch: "Floci reenvía stdout/stderr\n(capa de emulación)"
+cloudwatch -> vos_portable: "aws logs get-log-events"
+
+lambda -> docker_directo: "stdout/stderr crudo\n(sin pasar por CloudWatch)" {
+  style.stroke-dash: 4
+}
+docker_directo -> vos_vps: "docker logs <contenedor>" {
+  style.stroke-dash: 4
+}
