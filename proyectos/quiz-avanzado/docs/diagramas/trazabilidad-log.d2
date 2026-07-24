@@ -1,25 +1,35 @@
-direction: right
+direction: down
 
 stage_codigo: "" {
   style.fill: transparent
   style.stroke: transparent
-  direction: down
+  direction: right
 
-  ruta: "lambda/categories/index.js:23" {
+  cabecera: "" {
     style.fill: transparent
     style.stroke: transparent
-    style.bold: true
-    style.font-color: "#0f172a"
+    direction: down
+    ruta: "lambda/categories/index.js:23" {
+      style.fill: transparent
+      style.stroke: transparent
+      style.bold: true
+      style.font-color: "#0f172a"
+      style.font-size: 34
+    }
+    icono: "Código fuente" {
+      icon: https://icons.terrastruct.com/aws%2FDeveloper%20Tools%2FAWS-CodeCommit_light-bg.svg
+      shape: image
+      width: 170
+      height: 170
+      style.font-size: 28
+    }
   }
-  icono: "Código fuente" {
-    icon: https://icons.terrastruct.com/aws%2FDeveloper%20Tools%2FAWS-CodeCommit_light-bg.svg
-    shape: image
-  }
-  contenido: "console.log(\n  \"categories: listando categorias\"\n);" {
-    style.font: mono
-    style.fill: "#1e293b"
-    style.font-color: "#e2e8f0"
-    style.stroke: "#334155"
+  contenido: |||js
+    console.log(
+      "categories: listando categorias"
+    );
+  ||| {
+    style.font-size: 28
   }
 }
 
@@ -33,59 +43,91 @@ stage_logs: "" {
     style.stroke: transparent
     style.bold: true
     style.font-color: "#0f172a"
+    style.font-size: 34
   }
   icono: "CloudWatch Logs" {
     icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
     shape: image
+    width: 170
+    height: 170
+    style.font-size: 28
   }
 }
 
 stage_comando: "" {
   style.fill: transparent
   style.stroke: transparent
-  direction: down
+  direction: right
 
-  ruta: "aws logs get-log-events" {
+  cabecera: "" {
     style.fill: transparent
     style.stroke: transparent
-    style.bold: true
-    style.font-color: "#0f172a"
+    direction: down
+    ruta: "aws logs get-log-events" {
+      style.fill: transparent
+      style.stroke: transparent
+      style.bold: true
+      style.font-color: "#0f172a"
+      style.font-size: 34
+    }
+    icono: "Comando (paso 4)" {
+      icon: https://icons.terrastruct.com/aws%2FDeveloper%20Tools%2FAWS-Command-Line-Interface_light-bg.svg
+      shape: image
+      width: 170
+      height: 170
+      style.font-size: 28
+    }
   }
-  icono: "Comando (paso 4)" {
-    icon: https://icons.terrastruct.com/aws%2FDeveloper%20Tools%2FAWS-Command-Line-Interface_light-bg.svg
-    shape: image
-  }
-  contenido: "aws logs get-log-events \\\n  --log-group-name /aws/lambda/quiz-avanzado-categories \\\n  --log-stream-name '<stream>' --profile floci" {
-    style.font: mono
-    style.fill: "#1e293b"
-    style.font-color: "#e2e8f0"
-    style.stroke: "#334155"
+  contenido: |||bash
+    aws logs get-log-events \
+      --log-group-name /aws/lambda/quiz-avanzado-categories \
+      --log-stream-name '<stream>' --profile floci
+  ||| {
+    style.font-size: 28
   }
 }
 
 stage_respuesta: "" {
   style.fill: transparent
   style.stroke: transparent
-  direction: down
+  direction: right
 
-  ruta: "events[].message" {
+  cabecera: "" {
     style.fill: transparent
     style.stroke: transparent
-    style.bold: true
-    style.font-color: "#0f172a"
+    direction: down
+    ruta: "events[].message" {
+      style.fill: transparent
+      style.stroke: transparent
+      style.bold: true
+      style.font-color: "#0f172a"
+      style.font-size: 34
+    }
+    icono: "Respuesta (JSON)" {
+      icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAWS-Systems-Manager_Documents_light-bg.svg
+      shape: image
+      width: 170
+      height: 170
+      style.font-size: 28
+    }
   }
-  icono: "Respuesta (JSON)" {
-    icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAWS-Systems-Manager_Documents_light-bg.svg
-    shape: image
-  }
-  contenido: "{\n  \"events\": [\n    { \"message\":\n      \"...categories: listando categorias\" }\n  ]\n}" {
-    style.font: mono
-    style.fill: "#1e293b"
-    style.font-color: "#e2e8f0"
-    style.stroke: "#334155"
+  contenido: |||json
+    {
+      "events": [
+        { "message": "...categories: listando categorias" }
+      ]
+    }
+  ||| {
+    style.font-size: 28
   }
 }
 
-stage_codigo -> stage_logs: "se ejecuta al invocar\nla Lambda (Floci lo reenvía)"
-stage_logs -> stage_comando: "tú consultas con"
-stage_comando -> stage_respuesta: "devuelve"
+stage_codigo -> stage_logs: "se ejecuta al invocar la Lambda\n(Floci lo reenvía)" {
+  style.font-size: 26
+}
+stage_logs -> stage_comando: "tú consultas con" {
+  style.font-size: 26
+}
+stage_comando -> stage_respuesta: "devuelve" {
+  style.font-size: 26
+}
