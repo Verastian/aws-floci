@@ -1,0 +1,8 @@
+[Unit]
+Description=Borra el historial de jugadores inactivos del Quiz (no rankeados en el top 20)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/floci/quiz-cleanup-invoke.sh

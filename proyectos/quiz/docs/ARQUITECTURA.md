@@ -42,14 +42,17 @@ Cada Lambda tendrá su propio rol IAM, como practicamos en el Hello World.
 
 ```
 categorias (id, nombre, slug)
-preguntas (id, categoria_id -> categorias.id, enunciado, enunciado_en, es_multiple)
+preguntas (id, categoria_id -> categorias.id, enunciado, enunciado_en, es_multiple, dificultad)
 opciones (id, pregunta_id -> preguntas.id, texto, es_correcta, orden)
 explicaciones (pregunta_id -> preguntas.id, explicacion, tip, pistas JSONB, glosario JSONB)
 respuestas_detalladas (pregunta_id -> preguntas.id, contenido_md)   -- solo para un subconjunto de preguntas
-ranking (id, username, puntaje, categoria_id -> categorias.id, fecha)
+ranking (id, username, puntaje, categoria_id -> categorias.id, nivel, fecha,
+         avatar, color, aciertos, total, mejor_racha, puesto_logrado)
 ```
 
-Semilla inicial de `categorias`: `aws-cloud-practitioner`, `python`, `linux`. Poblado real: **169 preguntas**, **697 opciones**, **169 explicaciones**, **11 respuestas_detalladas** — todas en `aws-cloud-practitioner`; `python` y `linux` quedan sin preguntas (se muestran como "Próximamente" en el frontend, calculado dinámicamente con `COUNT(*)`).
+> Nota: este bloque quedó desactualizado varias rondas seguidas (`avatar`/`color`/`aciertos`/`total`/`mejor_racha`/`puesto_logrado` se agregaron en las rondas 10, 12 y 13 pero nunca se reflejaron acá) — corregido en la ronda 16 (§16) junto con las columnas `dificultad` y `nivel` que se agregan ahí mismo. `db/schema.sql` siempre fue la fuente de verdad real; este bloque es solo un resumen de lectura rápida.
+
+Semilla inicial de `categorias`: `aws-cloud-practitioner`, `python`, `linux`. Poblado real, verificado directamente contra `quiz-db` en la ronda 16 (creció desde el conteo original — no se documentó cuándo ni cómo, solo se corrige acá el número): **299 preguntas**, **1246 opciones**, **299 explicaciones**, **11 respuestas_detalladas** — todas en `aws-cloud-practitioner`; `python` y `linux` quedan sin preguntas (se muestran como "Próximamente" en el frontend, calculado dinámicamente con `COUNT(*)`).
 
 **Correcciones aplicadas (2026-07-04), directamente en la base de datos vía `UPDATE`:**
 - Pregunta **53**: la opción duplicada "Foro de AWS Support." se reemplazó por "AWS re:Post." (distractor real y distinto).
@@ -239,3 +242,37 @@ En vez de tocar el cron ajeno (podría ser gestionado por otra automatización d
 Instalado en el VPS en `/opt/floci/floci-lambda-runtime-guard.sh` + `/etc/systemd/system/floci-lambda-runtime-guard.{service,timer}`, habilitado con `systemctl enable --now floci-lambda-runtime-guard.timer`. Verificado con `systemctl start floci-lambda-runtime-guard.service` seguido de `journalctl -u floci-lambda-runtime-guard.service`, que confirma `OK: ... presente` cuando la imagen está cacheada.
 
 Diagnóstico rápido si vuelve a pasar: `aws lambda invoke --function-name quiz-categories --profile floci out.json && cat out.json` (200 con JSON = sano; `Lambda.InitError` = falta la imagen). Para confirmar que el guard está activo: `systemctl status floci-lambda-runtime-guard.timer` en el VPS.
+
+## 16. Dificultad por pregunta, ranking segmentado por nivel, HUD de puntaje animado y limpieza de inactivos (2026-07-24, sexta ronda)
+
+Motivada por feedback real de usuarios que ya juegan el Quiz públicamente — no por trabajo de servicios avanzados de AWS (ver `quiz-avanzado/docs/PLAN-SERVICIOS-AVANZADOS.md` para eso). Por primera vez, `quiz` y `quiz-avanzado` **dejan de ser exactamente el mismo código**: la lógica de la app se implementó y verificó primero contra `quiz-avanzado` (el sandbox, sin usuarios reales) y recién después se portó, ya validada, a `quiz`. La única pieza que quedó genuinamente distinta entre ambos es el disparador de la limpieza de inactivos (ver más abajo) — todo el resto del código de aplicación es idéntico otra vez.
+
+### Dificultad por pregunta y puntaje escalado
+
+Antes, cada pregunta valía siempre 100 puntos (+ 20 por racha). Ahora cada pregunta tiene una `dificultad` (`recordar`/`aplicar`/`analizar`, columna nueva en `preguntas`) que multiplica el puntaje base: 1.0×/1.5×/2.0× respectivamente. El bono de racha queda plano (no escala con dificultad — premia consistencia, no dureza). Las 299 preguntas existentes se clasificaron con una rúbrica heurística basada en patrones del enunciado (marcadores de escenario, de comparación/trade-off, extensión del texto, selección múltiple), no leyendo cada una a mano una por una — se validó con muestras revisadas manualmente en varias iteraciones hasta que la distribución y los casos límite (ej. preguntas sobre "modelo de responsabilidad compartida", que caían en tiers distintos por redacción incidental) quedaron consistentes. Resultado: 200 `recordar`, 91 `aplicar`, 8 `analizar`. Migraciones en `db/migraciones/001-nivel-dificultad.sql` (esquema) y `002-clasificacion-dificultad.sql` (la clasificación en sí).
+
+### Ranking segmentado por categoría + nivel, y por jugador distinto
+
+El "nivel" (10/20/30/65 preguntas, ya existía en el frontend como selector de dificultad del reto) ahora también viaja al ranking: nueva columna `ranking.nivel`, calculada siempre del lado del servidor (`nivel = total`, nunca la manda el cliente) — un primer lugar en "Modo Chill" (10 preguntas) ya no compite con uno en "Nivel GOD" (65 preguntas). El endpoint `GET /ranking` ahora exige `categoria` **y** `nivel`.
+
+Además, el top 20 pasó de ser "20 intentos" a ser **20 jugadores distintos** (el mejor puntaje de cada uno, vía `DISTINCT ON (username)`) — antes, un mismo jugador que jugaba varias veces podía ocupar varios lugares del podio. `puesto_logrado` (usado por las medallas Podio/Campeón) se recalculó con el mismo criterio, escopado a categoría+nivel; las filas ya guardadas conservan su valor congelado tal cual (el mismo principio de siempre: nunca cambia retroactivamente).
+
+### HUD de puntaje animado, estilo videojuego
+
+Antes, el puntaje solo se veía como un número estático en el header de cada pregunta, y una sola vez al final (con un conteo GSAP). Ahora: al empezar el quiz, un "0" grande y vistoso aparece centrado y se contrae hasta un HUD fijo en la esquina superior izquierda (fuera de `#screen-root`, para sobrevivir el re-render de cada pregunta — mismo truco que ya usaba el botón de tema). En cada acierto, un popup "+N" aparece junto al panel de feedback, vuela hacia el HUD mientras se desvanece, y el HUD cuenta hacia el nuevo total (mismo estilo "odómetro" que ya existía para el resultado final, ahora generalizado en un helper `animarContador` reutilizable) con un pulso de escala tanto al salir el popup como al aterrizar el conteo. El valor de cada acierto se calcula en el cliente (usando la `dificultad` que ahora devuelve `/answer`) solo para animar — el puntaje que realmente se guarda lo sigue recalculando `/submit` del lado del servidor, como siempre.
+
+### Rediseño del ranking: podio + tabs
+
+La pantalla de clasificación ahora tiene una barra de tabs por nivel (reusa ícono/color de cada `NIVELES`) y un podio elevado literal para el top 3 (orden visual 2º-1º-3º, como un podio olímpico), reusando los gradientes/anillos y la corona flotante que ya existían para el top 3. Las posiciones 4-20 se muestran como antes, en una lista simple debajo.
+
+### Limpieza de jugadores inactivos — el único punto donde `quiz` y `quiz-avanzado` divergen
+
+Cualquier jugador sin ningún intento en los últimos 30 días, y que no esté actualmente en el top 20 de ningún tablero (categoría+nivel), pierde todo su historial (`DELETE FROM ranking`) — evita que la tabla crezca indefinidamente con partidas de prueba o jugadores que no volvieron, sin perder nunca a nadie que sí importa para el ranking visible. Lógica en `lambda/cleanup/index.js`, desplegada como Lambda propia (`quiz-cleanup`, sin ruta de API Gateway — se invoca directo, nunca por HTTP).
+
+Como `quiz-avanzado` es el único proyecto donde se documentan servicios avanzados de AWS (ver convención en `CLAUDE.md`), el disparador periódico quedó distinto a propósito:
+- **`quiz-avanzado`**: EventBridge Scheduler real — la Fase 5 del plan de servicios avanzados ya tenía pensado "una tarea programada de ejemplo", y esta limpieza le dio un propósito real. Detalle completo (con la misma profundidad que CloudWatch): `quiz-avanzado/docs/GUIA-SERVICIOS-AVANZADOS.md` §5.
+- **`quiz`** (este proyecto, público): un timer `systemd` simple (`plataforma/systemd/quiz-cleanup.{service,timer}` + `plataforma/scripts/quiz-cleanup-invoke.sh`), calcado del mismo patrón que `floci-lambda-runtime-guard` (§15) — invoca la Lambda por HTTP directo contra el puerto local de Floci (`POST http://localhost:4566/2015-03-31/functions/quiz-cleanup/invocations`), sin necesidad de instalar `aws-cli` en el VPS solo para esto. No es un servicio avanzado de AWS, es la misma herramienta de ops que ya existía para el guard de la imagen del runtime — por eso se documenta acá y no en `quiz-avanzado`.
+
+### Verificación
+
+Todo se implementó y probó primero contra `quiz-avanzado` (incluyendo un recorrido completo con Playwright headless: categoría → nivel → perfil → 10 preguntas de las 3 dificultades → resultado → ranking con cambio de tabs, capturando pantallas de cada paso) antes de portarlo a este proyecto. La limpieza se probó con datos sintéticos aislados (usernames y niveles de prueba que no chocan con datos reales) tanto en `quiz-avanzado-db` como acá en `quiz-db` — confirmando en ambos casos que solo se borra al jugador inactivo fuera del top 20, nunca al que sí está protegido, y nunca a los usuarios reales ya existentes (11 filas de `ranking` intactas antes y después de la prueba en `quiz-db`).

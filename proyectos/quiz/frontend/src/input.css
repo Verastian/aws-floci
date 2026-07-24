@@ -17,4 +17,56 @@
   .progreso-relleno {
     @apply h-full bg-gradient-to-r from-indigo-600 to-violet-600 rounded-full;
   }
+
+  /* Medallon hexagonal para el top 3 de la clasificacion: mismo hexagono que
+     usan las credenciales reales de AWS, en vez de un circulo/numero generico. */
+  .medalla-hex {
+    clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  }
+
+  /* Corona sobre el 1er puesto: flote sutil, continuo pero muy corto de
+     recorrido (3px) para que sea "divertido" sin ser una distraccion. */
+  @keyframes flotar-corona {
+    0%, 100% { transform: translateY(0) rotate(-8deg); }
+    50% { transform: translateY(-3px) rotate(-8deg); }
+  }
+  .corona-flotante {
+    display: inline-block;
+    animation: flotar-corona 2.4s ease-in-out infinite;
+  }
+
+  /* Patron hexagonal (mismo motivo que la medalla) para darle textura de fondo
+     a TODA la app (se aplica en <body>, no a una pantalla puntual) sin llenar
+     el espacio vacio - mas denso/visible que la primera version, que casi no
+     se percibia. */
+  /* El gradiente de fondo va horneado ACA (no como clases bg-gradient-to-br de
+     Tailwind en el <body>) porque dos reglas de background-image compiten por
+     la misma propiedad y una gana por completo - asi quedan combinadas en una
+     sola declaracion con capas, en vez de que el gradiente tape el patron. */
+  .fondo-hex-sutil {
+    background-repeat: repeat, no-repeat;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230' viewBox='0 0 200 230'%3E%3Cpath d='M50 6l34 20v40l-34 20-34-20V26z' fill='none' stroke='%236366f1' stroke-width='2' opacity='0.14'/%3E%3Cpath d='M156 84l28 16v34l-28 16-28-16v-34z' fill='none' stroke='%238b5cf6' stroke-width='2' opacity='0.13'/%3E%3Cpath d='M28 150l22 13v26l-22 13-22-13v-26z' fill='none' stroke='%236366f1' stroke-width='2' opacity='0.11'/%3E%3Cpath d='M130 190l18 10v22l-18 10-18-10v-22z' fill='none' stroke='%238b5cf6' stroke-width='2' opacity='0.1'/%3E%3C/svg%3E"),
+      linear-gradient(to bottom right, #eef2ff, #ffffff, #f8fafc);
+  }
+  .dark .fondo-hex-sutil {
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230' viewBox='0 0 200 230'%3E%3Cpath d='M50 6l34 20v40l-34 20-34-20V26z' fill='none' stroke='%23818cf8' stroke-width='2' opacity='0.16'/%3E%3Cpath d='M156 84l28 16v34l-28 16-28-16v-34z' fill='none' stroke='%23a78bfa' stroke-width='2' opacity='0.15'/%3E%3Cpath d='M28 150l22 13v26l-22 13-22-13v-26z' fill='none' stroke='%23818cf8' stroke-width='2' opacity='0.13'/%3E%3Cpath d='M130 190l18 10v22l-18 10-18-10v-22z' fill='none' stroke='%23a78bfa' stroke-width='2' opacity='0.12'/%3E%3C/svg%3E"),
+      linear-gradient(to bottom right, #0f172a, #020617, #0f172a);
+  }
+
+  /* Tarjetas de nivel: sombra dura sin difuminado (estilo neubrutalismo) que
+     "se hunde" al presionar - el numero de preguntas es el elemento crudo y
+     protagonista, no un detalle mas. */
+  .nivel-card {
+    box-shadow: var(--sh) var(--sh) 0 0 var(--sh-color);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .nivel-card:hover {
+    transform: translate(calc(var(--sh) * -0.25), calc(var(--sh) * -0.25));
+  }
+  .nivel-card:active {
+    transform: translate(var(--sh), var(--sh));
+    box-shadow: 0 0 0 0 transparent;
+  }
 }

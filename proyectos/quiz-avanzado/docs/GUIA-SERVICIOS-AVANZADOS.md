@@ -13,7 +13,7 @@
 2. [CloudWatch: logs y métricas](#2-cloudwatch-logs-y-métricas)
 3. [Secrets Manager + KMS: gestión de credenciales](#3-secrets-manager--kms-gestión-de-credenciales)
 4. [CloudTrail: auditoría](#4-cloudtrail-auditoría)
-5. [SNS + EventBridge/Scheduler: mensajería y eventos](#5-sns--eventbridgescheduler-mensajería-y-eventos)
+5. [EventBridge Scheduler + SNS: mensajería y eventos](#5-eventbridge-scheduler--sns-mensajería-y-eventos)
 6. [WAF: seguridad perimetral](#6-waf-seguridad-perimetral)
 7. [CloudFormation: infraestructura como código](#7-cloudformation-infraestructura-como-código)
 8. [Cognito: autenticación real](#8-cognito-autenticación-real)
@@ -209,7 +209,7 @@ Vale la pena detenerse acá porque es la primera vez que este proyecto usa la di
 
 #### Cómo se configuró, en la práctica
 
-El permiso se agrega como una política **inline** (vive pegada al rol, no es un recurso separado reutilizable) sobre un documento JSON estándar de IAM:
+El permiso se agrega como una política **inline** (vive pegada al rol, no es un recurso separado reutilizable) sobre un documento JSON estándar de IAM, versionado en el repo en [`lambda/iam/publish-cloudwatch-metrics-policy.json`](../lambda/iam/publish-cloudwatch-metrics-policy.json):
 
 ```json
 {
@@ -224,12 +224,12 @@ El permiso se agrega como una política **inline** (vive pegada al rol, no es un
 }
 ```
 
-Ese mismo documento se adjuntó a los 6 roles con `put-role-policy` (acá, el rol de `categories`; el comando se repitió cambiando solo `--role-name`):
+Ese mismo documento se adjuntó a los 6 roles con `put-role-policy` (acá, el rol de `categories`; el comando se repitió cambiando solo `--role-name`, ejecutado desde la raíz del repo):
 
 ```bash
 aws iam put-role-policy --role-name quiz-avanzado-categories-role \
   --policy-name "PublishCloudWatchMetrics" \
-  --policy-document file:///tmp/cloudwatch-metrics-policy.json \
+  --policy-document file://proyectos/quiz-avanzado/lambda/iam/publish-cloudwatch-metrics-policy.json \
   --profile floci
 ```
 
@@ -671,19 +671,85 @@ Los "eventos de administración" (crear/borrar/modificar recursos) se registran 
 
 ---
 
-## 5. SNS + EventBridge/Scheduler: mensajería y eventos
+## 5. <img src="./imgs/Icono%20-%20Amazon%20EventBridge%20Scheduler.png" width="48" valign="middle"> EventBridge Scheduler + SNS: mensajería y eventos
 
-### Concepto
+✅ **EventBridge Scheduler implementado y probado el 2026-07-24**, contra `quiz-avanzado`. SNS sigue 🔜 pendiente (ver nota al final).
 
-**Amazon SNS (Simple Notification Service)** es un servicio de mensajería *pub/sub* (publicador/suscriptor): algo "publica" un mensaje en un **tópico**, y todos los que estén "suscritos" a ese tópico lo reciben (por email, SMS, una cola SQS, otra Lambda, etc.) — el publicador no necesita saber quién está escuchando. Es el patrón detrás de casi cualquier sistema de notificaciones en AWS.
+### 5.1 En una frase
 
-**Amazon EventBridge** (y su función de **Scheduler**) permite reaccionar a eventos — ya sea algo que pasó en AWS (ej. "se creó un objeto en S3"), algo externo, o simplemente **el paso del tiempo** (una regla programada, como un cron job, pero administrado por AWS en vez de un servidor corriendo 24/7).
+**Amazon EventBridge Scheduler** es un despertador administrado por AWS: le decís una vez "cada tanto, ejecutá esta tarea", y a partir de ahí se dispara solo, para siempre, sin que ningún servidor tuyo tenga que quedarse prendido esperando a que llegue la hora.
 
-En este proyecto: SNS para notificar puntajes altos (patrón pub/sub), EventBridge Scheduler para una tarea programada de ejemplo (arquitectura orientada a eventos, sin mantener un proceso corriendo todo el tiempo).
+### 5.2 Por qué hace falta (el problema que resuelve)
 
-### Cómo quedó implementado
+Antes de este servicio, "ejecutar algo periódicamente" significaba tener un servidor corriendo 24/7 con un `cron`, aunque la tarea en sí solo tomara un segundo una vez al día — pagabas por las 23 horas y 59 minutos en que ese servidor no hacía nada.
 
-🔜 Pendiente (Fase 5 del plan).
+Scheduler invierte esa lógica: no hay ningún servidor propio. AWS guarda la regla ("cada 1 día, invocá esta Lambda") y es **AWS quien te despierta la Lambda** en el momento justo — el mismo patrón *serverless* que ya vimos con Lambda en sí, aplicado ahora al "cuándo" en vez de al "qué".
+
+### 5.3 La analogía, en dibujo
+
+![Analogía: el despertador](./imgs/AWS-FLOCI%20-%20Analogia%20despertador.png)
+
+Programas el despertador una sola vez (hora + qué avisar); después, suena solo todos los días sin que nadie lo esté mirando; y cuando suena, alguien de confianza (no tú en persona) hace la tarea. Nada de esto es específico de AWS — es la misma idea detrás de cualquier automatización programada.
+
+### 5.4 De la analogía a EventBridge Scheduler
+
+![Mapeo: la analogía del despertador vs. EventBridge Scheduler](./imgs/AWS-FLOCI%20-%20Mapeo%20analogia%20Scheduler.png)
+
+- **Schedule** = el despertador. En este proyecto, `quiz-avanzado-cleanup-diario`, con expresión `rate(1 day)`.
+- **Invocación automática** = que suene solo. AWS lo dispara, tú no llamas a nada en ese momento.
+- **Execution Role** = el "alguien de confianza". Un rol IAM que Scheduler asume para poder invocar tu Lambda en tu nombre — sin este rol, Scheduler no tendría permiso de tocar nada.
+
+### 5.5 Cómo funciona en este proyecto (`quiz-avanzado`)
+
+Sobre la [arquitectura inicial](#0-arquitectura-inicial-punto-de-partida), esta fase agrega una Lambda nueva (`quiz-avanzado-cleanup`, sin ruta de API Gateway — nunca se invoca por HTTP) y su disparador:
+
+![Arquitectura: EventBridge Scheduler invocando la limpieza de inactivos](./imgs/AWS-FLOCI%20-%20Arquitectura%20EventBridge%20Scheduler.png)
+
+**El caso de uso real**: el plan original de esta fase pedía "una tarea programada de ejemplo, a modo de demostración" — sin propósito propio. Mientras se trabajaba en feedback de producto del Quiz (ver `quiz/docs/ARQUITECTURA.md` §16), surgió una necesidad real de negocio — borrar el historial de jugadores inactivos que no están en ningún top 20 — y esta fase se adelantó para resolverla de verdad, en vez de con un ejemplo descartable.
+
+**Hallazgo 1 — a diferencia de CloudWatch Alarms, Scheduler sí se auto-invoca en Floci.** Se probó exactamente con el mismo método que se usó para verificar (y descartar) la evaluación automática de Alarms en la Fase 2: se creó una schedule descartable a `rate(2 minutes)` apuntando a la Lambda, y se revisaron sus logs sin volver a invocarla manualmente. Resultado — tres invocaciones en el mismo log stream:
+
+```
+19:14:40  (invocación manual de prueba, previa a crear la schedule)
+19:17:53  (automática — 2m06s después de crear la schedule)
+19:20:03  (automática — 2m10s después de la anterior)
+```
+
+Dos disparos automáticos consecutivos, al intervalo esperado, confirman que la evaluación periódica **sí** está implementada en Floci para este servicio — un resultado genuinamente distinto al de Alarms, no asumido de antemano.
+
+**Hallazgo 2 — primera vez que un rol IAM de este proyecto es asumido por otro servicio de AWS, no por Lambda.** Hasta ahora, todos los roles tenían la misma *trust policy* (`lambda.amazonaws.com`). El rol de Scheduler tiene una distinta (`scheduler.amazonaws.com`) — y su *permission policy* es, además, la primera de este proyecto que no usa `Resource: "*"`: está acotada al ARN exacto de `quiz-avanzado-cleanup`, porque `lambda:InvokeFunction` sí admite restringir por recurso (a diferencia de `cloudwatch:PutMetricData` en la Fase 2):
+
+![El mismo tipo de rol, antes conocido y ahora nuevo](./imgs/AWS-FLOCI%20-%20IAM%20Scheduler%20antes%20y%20despues.png)
+
+Y así se usan en tiempo de ejecución, cada vez que se cumple el `rate(1 day)`:
+
+![Flujo de autorización: Scheduler asume el rol e invoca la Lambda](./imgs/AWS-FLOCI%20-%20Flujo%20autorizacion%20Scheduler.png)
+
+### 5.6 Cómo verificarlo tú mismo
+
+Requiere el túnel SSH activo y el perfil `floci` configurado (ver sección 2.8 para el detalle).
+
+1. **Confirmar que la schedule existe y está activa**:
+   ```bash
+   aws scheduler get-schedule --name quiz-avanzado-cleanup-diario --profile floci
+   ```
+   **Qué mirar:** `State: "ENABLED"` y `ScheduleExpression: "rate(1 day)"`.
+
+2. **Invocar la Lambda a mano, para tener un punto de referencia**:
+   ```bash
+   aws lambda invoke --function-name quiz-avanzado-cleanup --profile floci /tmp/out.json && cat /tmp/out.json
+   ```
+   Salida real: `{"filas_borradas":0,"jugadores_afectados":0}` (0 si no hay nadie que cumpla las condiciones de inactividad en este momento — no es un error).
+
+3. **Reproducir el Hallazgo 1** (opcional, tarda unos minutos): crear una schedule de prueba a `rate(2 minutes)`, esperar, y revisar si aparece una invocación nueva sin haberla llamado a mano — mismos comandos que en la sección 2.8, cambiando el nombre del log group a `/aws/lambda/quiz-avanzado-cleanup`. Borrar la schedule de prueba al terminar con `aws scheduler delete-schedule --name <nombre> --profile floci`.
+
+### 5.7 Qué cambió en el código
+
+`lambda/cleanup/index.js` es una Lambda nueva (no una modificación de las 6 existentes), con la misma instrumentación de CloudWatch que las demás (`console.log` + `publicarMetricas`, ver sección 2.9) y su propia política IAM (`lambda/iam/publish-cloudwatch-metrics-policy.json`, reusada) más el rol y la política nuevos exclusivos de Scheduler (`lambda/iam/scheduler-trust-policy.json`, `lambda/iam/invoke-quiz-avanzado-cleanup-policy.json`). Detalle completo de la lógica de limpieza (por qué 30 días, por qué "no estar en el top 20", la query SQL): `quiz/docs/ARQUITECTURA.md` §16 — el diseño de la limpieza en sí es una decisión de producto de la aplicación, no de este documento de servicios avanzados; acá solo se documenta el disparador.
+
+### SNS — todavía pendiente
+
+El resto de esta fase (un tópico SNS para notificar puntajes altos, y conectarlo a una acción real de la alarma de CloudWatch que quedó diagnosticada en la Fase 2) sigue 🔜 pendiente. Se retoma en una sesión aparte.
 
 ---
 

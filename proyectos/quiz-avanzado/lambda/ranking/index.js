@@ -21,25 +21,32 @@ async function publicarMetricas(errores, duracionMs) {
 
 exports.handler = async (event) => {
   const categoria = event.queryStringParameters && event.queryStringParameters.categoria;
-  console.log(`ranking: consultando tabla${categoria ? ` categoria=${categoria}` : " (todas las categorias)"}`);
+  const nivel = event.queryStringParameters && Number(event.queryStringParameters.nivel);
+  if (!categoria || !nivel) {
+    return respond(400, { error: "categoria y nivel son requeridos" });
+  }
+  console.log(`ranking: consultando tabla categoria=${categoria} nivel=${nivel}`);
   const inicio = Date.now();
 
   const client = new Client();
   await client.connect();
   try {
-    let query = `
-      SELECT r.username, r.puntaje, r.avatar, r.color, r.aciertos, r.total, r.mejor_racha, c.slug AS categoria, r.fecha
-      FROM ranking r
-      JOIN categorias c ON c.id = r.categoria_id
+    // Top 20 por JUGADOR distinto (mejor puntaje de cada uno), no por intento -- un
+    // mismo jugador que jugo varias veces no debe ocupar varios lugares del podio.
+    const query = `
+      SELECT * FROM (
+        SELECT DISTINCT ON (r.username)
+          r.username, r.puntaje, r.avatar, r.color, r.aciertos, r.total, r.mejor_racha, r.fecha
+        FROM ranking r
+        JOIN categorias c ON c.id = r.categoria_id
+        WHERE c.slug = $1 AND r.nivel = $2
+        ORDER BY r.username, r.puntaje DESC, r.fecha ASC
+      ) mejores
+      ORDER BY puntaje DESC, fecha ASC
+      LIMIT 20
     `;
-    const params = [];
-    if (categoria) {
-      params.push(categoria);
-      query += ` WHERE c.slug = $1`;
-    }
-    query += ` ORDER BY r.puntaje DESC, r.fecha ASC LIMIT 20`;
 
-    const { rows } = await client.query(query, params);
+    const { rows } = await client.query(query, [categoria, nivel]);
     await publicarMetricas(0, Date.now() - inicio);
     return respond(200, rows);
   } catch (err) {

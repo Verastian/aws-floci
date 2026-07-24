@@ -85,11 +85,13 @@ Detalle completo (analogía, arquitectura, comandos de verificación manual): [`
 - [ ] `aws cloudtrail start-logging`.
 - [ ] Provocar algunas acciones (crear/borrar algo de prueba) y verificar que aparecen con `aws cloudtrail lookup-events`.
 
-## Fase 5 — Mensajería y eventos: SNS + EventBridge/Scheduler — *independiente*
+## Fase 5 — Mensajería y eventos: EventBridge Scheduler + SNS — *independiente* — ⚙️ parcialmente implementada (2026-07-24)
 
+Alcance adelantado el 2026-07-24: la parte de EventBridge Scheduler ya no es "una tarea programada de ejemplo, a modo de demostración" — surgió una necesidad real de producto (limpieza de jugadores inactivos del Quiz, ver `quiz/docs/ARQUITECTURA.md` §16) y se implementó con ese propósito real, en vez de con un ejemplo descartable. SNS sigue sin empezar.
+
+- [x] Crear una regla programada (EventBridge Scheduler) que dispare una Lambda periódica — `quiz-avanzado-cleanup-diario`, `rate(1 day)`, invoca `quiz-avanzado-cleanup` (borra el historial de jugadores inactivos fuera del top 20). **Verificado que la evaluación automática sí funciona en Floci** (a diferencia de Alarms en la Fase 2): dos disparos automáticos consecutivos confirmados por logs, al intervalo esperado, con una schedule de prueba descartable antes de crear la real. Primer rol IAM de este proyecto asumido por un principal que no es `lambda.amazonaws.com`, y primer permiso acotado a un ARN puntual en vez de `Resource: "*"`. Detalle completo: [`GUIA-SERVICIOS-AVANZADOS.md` §5](./GUIA-SERVICIOS-AVANZADOS.md#5-eventbridge-scheduler--sns-mensajería-y-eventos).
 - [ ] Crear un tópico SNS (`quiz-high-scores`) y una suscripción (email o SQS).
 - [ ] Modificar la Lambda `submit` para publicar un mensaje cuando el puntaje supere un umbral (ej. ≥ 500 puntos) — requiere permiso `sns:Publish` en su rol.
-- [ ] Crear una regla programada (EventBridge Scheduler) que dispare una Lambda de mantenimiento periódica (ej. una que solo registre un log, a modo de demostración de *scheduled events*).
 - [ ] Construir la alarma real de CloudWatch que quedó pendiente de la Fase 2: sobre una de las métricas custom de `QuizAvanzado/Lambda` (ej. `Errors`), con una acción de notificación real conectada al tópico SNS de este ítem — recordar que la evaluación automática del umbral no funciona en Floci (ver hallazgo de la Fase 2), así que la demostración de "la alarma se disparó" tendrá que apoyarse en `set-alarm-state` en vez de esperar la evaluación real.
 
 ## Fase 6 — Seguridad perimetral: WAF — *depende de la Fase 1 para tener sentido pleno*

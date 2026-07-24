@@ -1,0 +1,24 @@
+direction: down
+
+persona: "🧑 Tú, una sola vez\n(al configurarlo)" {
+  style.fill: "#e0f2fe"
+  style.font-size: 22
+}
+despertador: "⏰ Un despertador\n(hora + qué tarea avisar)" {
+  style.fill: "#fef3c7"
+  style.font-size: 22
+}
+solo: "🔔 Suena solo,\ntodos los días,\nsin que nadie lo mire" {
+  style.fill: "#fde68a"
+  style.font-size: 22
+}
+tarea: "✅ La tarea se hace\n(alguien de confianza\nla ejecuta por ti)" {
+  style.fill: "#fed7aa"
+  style.font-size: 22
+}
+
+persona -> despertador: "1. lo programas una vez"
+despertador -> solo: "2. después, solo"
+solo -> tarea: "3. dispara la tarea" {
+  style.stroke-dash: 4
+}

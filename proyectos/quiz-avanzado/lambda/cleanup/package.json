@@ -1,0 +1,10 @@
+{
+  "name": "quiz-avanzado-cleanup",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.1094.0",
+    "pg": "^8.13.1"
+  }
+}

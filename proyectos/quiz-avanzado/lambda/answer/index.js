@@ -57,11 +57,18 @@ exports.handler = async (event) => {
       "SELECT explicacion, tip FROM explicaciones WHERE pregunta_id = $1",
       [pregunta_id]
     );
+    // Se revela recien aca (nunca en /questions, antes de responder): no da pista
+    // de dificultad. El frontend la usa solo para animar el "+N" del HUD de puntaje.
+    const dificultadRes = await client.query(
+      "SELECT dificultad FROM preguntas WHERE id = $1",
+      [pregunta_id]
+    );
 
     await publicarMetricas(0, Date.now() - inicio);
     return respond(200, {
       correcta,
       opciones_correctas: [...esperadas],
+      dificultad: dificultadRes.rows[0] ? dificultadRes.rows[0].dificultad : null,
       explicacion: explRes.rows[0] || null,
     });
   } catch (err) {

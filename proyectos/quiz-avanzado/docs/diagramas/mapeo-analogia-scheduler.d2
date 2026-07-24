@@ -1,0 +1,38 @@
+mapa: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  grid-rows: 2
+  grid-columns: 4
+  horizontal-gap: 80
+  vertical-gap: 60
+
+  fila1: "La analogía\ndel despertador" {
+    style.fill: transparent
+    style.stroke: transparent
+    style.bold: true
+    style.font-size: 20
+  }
+  despertador: "⏰ Despertador\n(hora + tarea)" { style.fill: "#fef3c7" }
+  solo: "🔔 Suena solo" { style.fill: "#fde68a" }
+  confianza: "🧑‍🔧 Alguien de\nconfianza que\nla ejecuta" { style.fill: "#fed7aa" }
+
+  fila2: "EventBridge Scheduler\n(el servicio real)" {
+    style.fill: transparent
+    style.stroke: transparent
+    style.bold: true
+    style.font-size: 20
+  }
+  schedule: "Schedule\nrate(1 day)" { style.fill: "#dbeafe" }
+  disparo: "Invocación\nautomática" { style.fill: "#bfdbfe" }
+  rol: "Execution Role\n(IAM, invoca la Lambda\nen tu nombre)" { style.fill: "#93c5fd" }
+}
+
+mapa.despertador -> mapa.schedule: "es" {
+  style.stroke-dash: 4
+}
+mapa.solo -> mapa.disparo: "es" {
+  style.stroke-dash: 4
+}
+mapa.confianza -> mapa.rol: "es" {
+  style.stroke-dash: 4
+}

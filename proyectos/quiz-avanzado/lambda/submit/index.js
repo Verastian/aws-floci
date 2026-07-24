@@ -26,6 +26,10 @@ const COLORES_VALIDOS = new Set(["#f59e0b", "#0ea5e9", "#ec4899", "#22c55e", "#8
 const PUNTOS_BASE = 100;
 const BONUS_POR_RACHA = 20;
 
+// Debe coincidir con MULTIPLICADOR_DIFICULTAD en frontend/app.js. El bonus de
+// racha queda plano (no escala con dificultad): premia consistencia, no dureza.
+const MULTIPLICADOR_DIFICULTAD = { recordar: 1.0, aplicar: 1.5, analizar: 2.0 };
+
 // Debe coincidir con lambda/badges/index.js
 const MEDALLAS_QUERY = `
   SELECT
@@ -90,6 +94,12 @@ exports.handler = async (event) => {
       if (o.es_correcta) correctasPorPregunta.get(o.pregunta_id).add(o.id);
     }
 
+    const dificultadRes = await client.query(
+      "SELECT id, dificultad FROM preguntas WHERE id = ANY($1)",
+      [preguntaIds]
+    );
+    const dificultadPorPregunta = new Map(dificultadRes.rows.map((p) => [p.id, p.dificultad]));
+
     let racha = 0;
     let mejorRacha = 0;
     let aciertos = 0;
@@ -104,7 +114,8 @@ exports.handler = async (event) => {
       if (esCorrecta) {
         racha += 1;
         aciertos += 1;
-        puntaje += PUNTOS_BASE + BONUS_POR_RACHA * (racha - 1);
+        const mult = MULTIPLICADOR_DIFICULTAD[dificultadPorPregunta.get(r.pregunta_id)] ?? 1.0;
+        puntaje += Math.round(PUNTOS_BASE * mult) + BONUS_POR_RACHA * (racha - 1);
         mejorRacha = Math.max(mejorRacha, racha);
       } else {
         racha = 0;
@@ -112,25 +123,35 @@ exports.handler = async (event) => {
     }
 
     const total = respuestas.length;
+    // El nivel jugado (10/20/30/65 preguntas) nunca lo manda el cliente: se deriva de
+    // "total", igual que el backfill de las filas historicas (ver migraciones/001-*.sql).
+    const nivel = total;
 
-    // El puesto se calcula ANTES de insertar (cuenta cuantos ya tienen mas puntaje),
-    // asi se puede guardar en la misma fila (puesto_logrado) para medallas futuras
-    // como Podio/Campeon, que no deben cambiar retroactivamente si el ranking se mueve despues.
+    // El puesto se calcula ANTES de insertar (cuenta cuantos JUGADORES DISTINTOS ya
+    // tienen un mejor puntaje en esta categoria+nivel -- no cuenta intentos repetidos
+    // del mismo jugador), asi se puede guardar en la misma fila (puesto_logrado) para
+    // medallas futuras como Podio/Campeon, que no deben cambiar retroactivamente si el
+    // ranking se mueve despues.
     const { rows: mejoresRows } = await client.query(
-      "SELECT COUNT(*)::int AS mejores FROM ranking WHERE categoria_id = $1 AND puntaje > $2",
-      [categoriaId, puntaje]
+      `SELECT COUNT(*)::int AS mejores FROM (
+         SELECT username, MAX(puntaje) AS mejor
+         FROM ranking
+         WHERE categoria_id = $1 AND nivel = $2
+         GROUP BY username
+       ) t WHERE t.mejor > $3`,
+      [categoriaId, nivel, puntaje]
     );
     const puesto = mejoresRows[0].mejores + 1;
 
     await client.query(
-      `INSERT INTO ranking (username, puntaje, categoria_id, avatar, color, aciertos, total, mejor_racha, puesto_logrado)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [username, puntaje, categoriaId, avatar, color, aciertos, total, mejorRacha, puesto]
+      `INSERT INTO ranking (username, puntaje, categoria_id, nivel, avatar, color, aciertos, total, mejor_racha, puesto_logrado)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [username, puntaje, categoriaId, nivel, avatar, color, aciertos, total, mejorRacha, puesto]
     );
 
     const { rows: totalRows } = await client.query(
-      "SELECT COUNT(*)::int AS total FROM ranking WHERE categoria_id = $1",
-      [categoriaId]
+      "SELECT COUNT(DISTINCT username)::int AS total FROM ranking WHERE categoria_id = $1 AND nivel = $2",
+      [categoriaId, nivel]
     );
 
     const { rows: medallaRows } = await client.query(MEDALLAS_QUERY, [username]);

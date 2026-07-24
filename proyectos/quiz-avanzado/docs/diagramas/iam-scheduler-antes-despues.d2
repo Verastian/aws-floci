@@ -1,0 +1,24 @@
+mapa: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  grid-rows: 2
+  grid-columns: 2
+  horizontal-gap: 140
+  vertical-gap: 40
+
+  antes_titulo: "Rol ya conocido\n(las 7 Lambdas del proyecto)" {
+    icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identity-and-Access-Management-IAM_Role_light-bg.svg
+    shape: image
+  }
+  despues_titulo: "Rol nuevo\nquiz-avanzado-scheduler-invoke-role" {
+    icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identity-and-Access-Management-IAM_Role_light-bg.svg
+    shape: image
+  }
+
+  antes_detalle: "Trust Policy:\nlambda.amazonaws.com asume\n\nPermission Policy:\ncloudwatch:PutMetricData\nResource: \"*\"" {
+    style.fill: "#dbeafe"
+  }
+  despues_detalle: "Trust Policy:\nscheduler.amazonaws.com asume\n(nuevo tipo de principal)\n\nPermission Policy:\nlambda:InvokeFunction\nResource: ARN de una sola función\n(primera vez sin \"*\")" {
+    style.fill: "#dcfce7"
+  }
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Corre quiz-cleanup una vez por dia
+
+[Timer]
+OnCalendar=daily
+OnBootSec=5min
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,30 @@
+direction: right
+
+scheduler: "Amazon EventBridge Scheduler\nquiz-avanzado-cleanup-diario\nrate(1 day)" {
+  icon: https://icons.terrastruct.com/aws%2FApplication%20Integration%2FAmazon-EventBridge_light-bg.svg
+  shape: image
+}
+
+rol: "Execution Role\nscheduler.amazonaws.com asume\n+ lambda:InvokeFunction" {
+  icon: https://icons.terrastruct.com/aws%2FSecurity%2C%20Identity%2C%20%26%20Compliance%2FAWS-Identity-and-Access-Management-IAM_Role_light-bg.svg
+  shape: image
+}
+
+lambda: "AWS Lambda\nquiz-avanzado-cleanup\n(con CloudWatch, igual que las otras 6)" {
+  icon: https://icons.terrastruct.com/aws%2FCompute%2FAWS-Lambda_light-bg.svg
+  shape: image
+}
+
+rds: "Amazon RDS\nquiz-avanzado-db" {
+  icon: https://icons.terrastruct.com/aws%2FDatabase%2FAmazon-RDS_light-bg.svg
+  shape: image
+}
+
+vos: "Tú / tu equipo" {
+  style.fill: "#ede9fe"
+}
+
+scheduler -> rol: "usa para autenticarse"
+rol -> lambda: "lambda:InvokeFunction"
+lambda -> rds: "DELETE FROM ranking\n(inactivos fuera del top 20)"
+lambda -> vos: "console.log + métricas\n(CloudWatch, igual que siempre)"

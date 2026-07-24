@@ -11,10 +11,15 @@ const API_BASE = window.location.hostname.endsWith(".localhost")
   ? `http://localhost:4566/restapis/${API_ID}/$default/_user_request_`
   : `/restapis/${API_ID}/$default/_user_request_`;
 
+// Escalera de dificultad tipo videojuego (no la nota "10/20/30 preguntas" de
+// antes): cada escalon sube en intensidad de color, tamaño del numero y dureza
+// de la sombra ("brutalismo") para que el reto mas exigente se SIENTA mas
+// exigente antes de leer una sola palabra.
 const NIVELES = [
-  { n: 10, nombre: "Rápido", desc: "~3 min", color: "#6366f1" },
-  { n: 20, nombre: "Clásico", desc: "~6 min", color: "#22c55e" },
-  { n: 30, nombre: "Maratón", desc: "~10 min", color: "#f59e0b" },
+  { n: 10, nombre: "Modo Chill", desc: "El calentamiento", icono: "😌", color: "#0284c7", tarjeta: "bg-sky-50 dark:bg-sky-500/10 border-sky-300 dark:border-sky-500/50", numTam: "text-4xl", sombra: "3px" },
+  { n: 20, nombre: "Modo Reto", desc: "Ya se pone serio", icono: "🔥", color: "#d97706", tarjeta: "bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/50", numTam: "text-5xl", sombra: "4px" },
+  { n: 30, nombre: "Modo Despiadado", desc: "Sin piedad", icono: "💀", color: "#dc2626", tarjeta: "bg-red-50 dark:bg-red-500/10 border-red-400 dark:border-red-500/60", numTam: "text-6xl", sombra: "5px" },
+  { n: 65, nombre: "Nivel GOD", desc: "Solo para valientes", icono: "👑", color: "#facc15", tarjeta: "bg-slate-900 border-amber-400", numTam: "text-7xl", sombra: "6px", oscuro: true },
 ];
 
 // Debe coincidir con AVATARES_VALIDOS en lambda/submit/index.js
@@ -25,6 +30,18 @@ const COLORES = ["#f59e0b", "#0ea5e9", "#ec4899", "#22c55e", "#8b5cf6", "#ef4444
 const CATEGORIA_ICONOS = { "aws-cloud-practitioner": "☁️", python: "🐍", linux: "🐧" };
 const CATEGORIA_COLORES = { "aws-cloud-practitioner": "#f59e0b", python: "#22c55e", linux: "#0ea5e9" };
 const LETRAS = ["A", "B", "C", "D", "E"];
+
+// Clases compartidas para que los botones reaccionen al hover del mouse y al
+// tap en movil (antes no tenian ninguna clase de estado, por eso se sentian
+// "muertos" / deshabilitados aunque no lo estuvieran).
+const CLASE_BTN_PRIMARIO = "transition-all duration-150 hover:brightness-110 active:scale-[0.97]";
+const CLASE_BTN_SECUNDARIO = "transition-all duration-150 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.97]";
+
+// Debe coincidir con MULTIPLICADOR_DIFICULTAD en lambda/submit/index.js. Solo se usa
+// para animar el "+N" en vivo durante el quiz - el puntaje real y unico que cuenta
+// siempre lo recalcula /submit del lado del servidor, esto es cosmetico.
+const MULTIPLICADOR_DIFICULTAD = { recordar: 1.0, aplicar: 1.5, analizar: 2.0 };
+const BONUS_POR_RACHA = 20;
 
 // Debe coincidir con MEDALLAS_INFO en lambda/badges/index.js y lambda/submit/index.js
 const MEDALLAS_INFO = [
@@ -83,6 +100,9 @@ function escapeHtml(str) {
 function render(html) {
   root.innerHTML = html;
   animarEntradaPantalla();
+  // Por defecto el HUD de puntaje esta oculto - solo renderPregunta() lo vuelve a
+  // mostrar explicitamente. Asi ninguna pantalla nueva se puede "olvidar" de ocultarlo.
+  ocultarHud();
 }
 
 // --- Tema claro / oscuro / sistema ---
@@ -136,6 +156,119 @@ function animarClickBoton(el) {
 function animarListaEscalonada(selector) {
   if (typeof gsap === "undefined") return;
   gsap.fromTo(selector, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out", stagger: 0.06, delay: 0.1 });
+}
+
+// Pulso corto (~0.4s) al acertar una pregunta - deliberadamente mas chico y
+// rapido que el confeti del resultado final, que queda reservado para el
+// cierre del quiz completo, no para cada acierto individual.
+function animarAcierto() {
+  if (typeof gsap === "undefined") return;
+  const panel = document.getElementById("feedback-panel");
+  const check = document.getElementById("feedback-check");
+  if (panel) gsap.fromTo(panel, { scale: 0.96 }, { scale: 1, duration: 0.4, ease: "back.out(2.5)" });
+  if (check) gsap.fromTo(check, { scale: 0, rotate: -45 }, { scale: 1, rotate: 0, duration: 0.35, delay: 0.05, ease: "back.out(3)" });
+}
+
+// Tween generico "desde -> hasta" con numeros que van avanzando (odometro), usado
+// tanto por el HUD en vivo como por el reveal del resultado final.
+function animarContador(el, desde, hasta, { duracion = 1.0, ease = "power1.out", onComplete } = {}) {
+  if (!el) return;
+  if (typeof gsap === "undefined") {
+    el.textContent = `${hasta}`;
+    if (onComplete) onComplete();
+    return;
+  }
+  const contador = { valor: desde };
+  gsap.to(contador, {
+    valor: hasta,
+    duration: duracion,
+    ease,
+    onUpdate: () => { el.textContent = `${Math.round(contador.valor)}`; },
+    onComplete,
+  });
+}
+
+// --- HUD de puntaje (persistente, vive fuera de #screen-root - ver index.html) ---
+
+function mostrarHud() {
+  document.getElementById("hud-puntaje").classList.remove("hidden");
+}
+function ocultarHud() {
+  document.getElementById("hud-puntaje").classList.add("hidden");
+}
+
+// Reveal "tipo videojuego" al arrancar el quiz: un "0" gigante centrado que se
+// contrae y se desplaza hasta la posicion del HUD chico de la esquina, con la
+// diferencia de rects calculada a mano (el CDN solo trae gsap.min.js puro, sin
+// el plugin Flip que haria esto mismo con una sola linea).
+function mostrarHudInicial() {
+  const hud = document.getElementById("hud-puntaje");
+  const capa = document.getElementById("popup-layer");
+  hud.classList.remove("hidden");
+  hud.style.opacity = "0";
+
+  const grande = document.createElement("div");
+  grande.className = "absolute inset-0 flex items-center justify-center";
+  grande.innerHTML = `<div class="text-8xl font-extrabold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">0</div>`;
+  capa.appendChild(grande);
+
+  if (typeof gsap === "undefined") {
+    grande.remove();
+    hud.style.opacity = "1";
+    return;
+  }
+
+  const destino = hud.getBoundingClientRect();
+  const origen = grande.firstElementChild.getBoundingClientRect();
+  const dx = destino.left + destino.width / 2 - (origen.left + origen.width / 2);
+  const dy = destino.top + destino.height / 2 - (origen.top + origen.height / 2);
+  const escala = Math.max(0.18, destino.height / origen.height);
+
+  gsap.timeline()
+    .fromTo(grande.firstElementChild, { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: "back.out(2)" })
+    .to(grande.firstElementChild, { x: dx, y: dy, scale: escala, opacity: 0, duration: 0.7, ease: "power2.inOut", delay: 0.5 })
+    .call(() => { hud.style.opacity = "1"; grande.remove(); }, [], "-=0.15");
+}
+
+// Popup "+N" cerca del panel de feedback que vuela hacia el HUD mientras se
+// desvanece; al aterrizar, el HUD cuenta hacia el nuevo total con un pulso de
+// escala tanto al salir el popup como al terminar de contar.
+function animarGananciaPuntos(puntos, puntajeAnterior, puntajeNuevo) {
+  const hud = document.getElementById("hud-puntaje");
+  const hudValor = document.getElementById("hud-puntaje-valor");
+  const capa = document.getElementById("popup-layer");
+  const origenEl = document.getElementById("feedback-panel") || document.getElementById("screen-root");
+
+  if (typeof gsap === "undefined" || !hud || !origenEl) {
+    if (hudValor) hudValor.textContent = `${puntajeNuevo}`;
+    return;
+  }
+
+  const popup = document.createElement("div");
+  popup.className = "absolute text-2xl font-extrabold text-green-500";
+  popup.textContent = `+${puntos}`;
+  const rectOrigen = origenEl.getBoundingClientRect();
+  popup.style.left = `${rectOrigen.left + rectOrigen.width / 2}px`;
+  popup.style.top = `${rectOrigen.top + 12}px`;
+  popup.style.transform = "translate(-50%, 0)";
+  capa.appendChild(popup);
+
+  const rectHud = hud.getBoundingClientRect();
+  const dx = rectHud.left + rectHud.width / 2 - (rectOrigen.left + rectOrigen.width / 2);
+  const dy = rectHud.top + rectHud.height / 2 - (rectOrigen.top + 12);
+
+  gsap.timeline()
+    .fromTo(popup, { y: 0, opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.25, ease: "back.out(3)" })
+    .to(popup, { x: dx, y: dy, opacity: 0, scale: 0.5, duration: 0.55, ease: "power1.in" })
+    .call(() => {
+      popup.remove();
+      gsap.fromTo(hud, { scale: 1 }, { scale: 1.15, duration: 0.18, yoyo: true, repeat: 1, ease: "power1.inOut" });
+      animarContador(hudValor, puntajeAnterior, puntajeNuevo, {
+        duracion: 0.6,
+        ease: "power2.out",
+        onComplete: () => gsap.fromTo(hud, { scale: 1 }, { scale: 1.12, duration: 0.2, yoyo: true, repeat: 1, ease: "power1.inOut" }),
+      });
+    });
 }
 
 // Confeti de celebracion al terminar el quiz. Se arma con divs de colores de la
@@ -225,8 +358,8 @@ function renderLanding() {
       <div class="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-4xl font-extrabold text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 mb-6">?</div>
       <h1 class="text-4xl font-extrabold mb-3">Reto Quiz</h1>
       <p class="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">Pon a prueba lo que sabes. Elige tu reto,<br>personaliza tu perfil y escala en la clasificación.</p>
-      <button id="btn-jugar" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-2xl py-4 shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 mb-3">Jugar</button>
-      <button id="btn-ver-clasificacion" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 font-semibold text-slate-700 dark:text-slate-200">Clasificación</button>
+      <button id="btn-jugar" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-2xl py-4 shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 mb-3 ${CLASE_BTN_PRIMARIO}">Jugar</button>
+      <button id="btn-ver-clasificacion" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 font-semibold text-slate-700 dark:text-slate-200 ${CLASE_BTN_SECUNDARIO}">Clasificación</button>
     </div>
   `);
 
@@ -282,13 +415,16 @@ function renderCategorias() {
 function renderNivel() {
   const cards = NIVELES.map(
     (nv) => `
-      <button class="nivel-card flex items-center gap-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm text-left transition hover:shadow-md hover:-translate-y-0.5" data-n="${nv.n}">
-        <span class="w-11 h-11 rounded-xl flex items-center justify-center font-extrabold text-lg shrink-0" style="background-color:${nv.color}22;color:${nv.color}">${nv.n}</span>
-        <span class="flex-1">
-          <span class="block font-bold">${nv.nombre}</span>
-          <span class="block text-sm text-slate-400">${nv.n} preguntas · ${nv.desc}</span>
+      <button class="nivel-card flex items-center gap-4 ${nv.tarjeta} border-2 rounded-2xl p-4 text-left" style="--sh:${nv.sombra};--sh-color:${nv.color}" data-n="${nv.n}">
+        <span class="${nv.numTam} font-black leading-none tabular-nums shrink-0" style="color:${nv.color}">${nv.n}</span>
+        <span class="flex-1 min-w-0">
+          <span class="flex items-center gap-1.5">
+            <span class="text-lg">${nv.icono}</span>
+            <span class="font-extrabold ${nv.oscuro ? "text-white" : ""}">${nv.nombre}</span>
+          </span>
+          <span class="block text-sm ${nv.oscuro ? "text-slate-400" : "text-slate-400"}">${nv.n} preguntas · ${nv.desc}</span>
         </span>
-        <span class="text-slate-300 dark:text-slate-600">→</span>
+        <span class="${nv.oscuro ? "text-slate-500" : "text-slate-300 dark:text-slate-600"}">→</span>
       </button>`
   ).join("");
 
@@ -352,7 +488,7 @@ function renderPerfil() {
         ${renderMedallasHtml(medallasIniciales)}
       </div>
 
-      <button id="btn-empezar" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-2xl py-4 shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 disabled:opacity-40 disabled:shadow-none" ${state.username ? "" : "disabled"}>Empezar</button>
+      <button id="btn-empezar" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-2xl py-4 shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 disabled:opacity-40 disabled:shadow-none disabled:hover:brightness-100 disabled:active:scale-100 ${CLASE_BTN_PRIMARIO}" ${state.username ? "" : "disabled"}>Empezar</button>
     </div>
   `);
 
@@ -413,9 +549,29 @@ async function iniciarQuiz() {
     state.racha = 0;
     state.feedbackActual = null;
     renderPregunta();
+    mostrarHudInicial();
   } catch (err) {
     render(`<p class="text-red-500 text-center py-10">Error cargando preguntas: ${escapeHtml(err.message)}</p>`);
   }
+}
+
+// Antes de confirmar/responder, marca visualmente que opciones estan
+// tildadas (el <input> real esta oculto para poder controlar el look del
+// <label> que lo envuelve, asi que sin esto un checkbox marcado no se ve
+// distinto de uno sin marcar - especialmente confuso en preguntas de
+// respuesta multiple, donde hay que poder ver varias marcadas a la vez).
+function actualizarSeleccionVisual() {
+  root.querySelectorAll(".opcion-input").forEach((input) => {
+    const label = input.closest(".opcion-btn");
+    if (!label) return;
+    if (input.checked) {
+      label.classList.remove("border-slate-200", "dark:border-slate-700");
+      label.classList.add("border-indigo-500", "dark:border-indigo-400", "bg-indigo-50", "dark:bg-indigo-500/10");
+    } else {
+      label.classList.add("border-slate-200", "dark:border-slate-700");
+      label.classList.remove("border-indigo-500", "dark:border-indigo-400", "bg-indigo-50", "dark:bg-indigo-500/10");
+    }
+  });
 }
 
 function renderPregunta() {
@@ -463,17 +619,20 @@ function renderPregunta() {
 
   const confirmarHtml =
     !feedback && p.es_multiple
-      ? `<button id="btn-confirmar" class="w-full mt-1 bg-slate-800 text-white font-bold rounded-2xl py-3.5 disabled:opacity-30 disabled:cursor-not-allowed" disabled>Confirmar respuesta</button>`
+      ? `<button id="btn-confirmar" class="w-full mt-1 bg-slate-800 text-white font-bold rounded-2xl py-3.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:active:scale-100 ${CLASE_BTN_PRIMARIO}" disabled>Confirmar respuesta</button>`
       : "";
 
   const feedbackHtml = feedback
     ? `
-    <div class="mt-5 rounded-2xl p-5 border-l-4 ${feedback.correcta ? "border-green-500 bg-green-50 dark:bg-green-500/10" : "border-red-500 bg-red-50 dark:bg-red-500/10"}">
-      <div class="font-extrabold mb-1 ${feedback.correcta ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}">${feedback.correcta ? "¡Correcto!" : "¡Incorrecto!"}</div>
+    <div id="feedback-panel" class="mt-5 rounded-2xl p-5 border-l-4 ${feedback.correcta ? "border-green-500 bg-green-50 dark:bg-green-500/10" : "border-red-500 bg-red-50 dark:bg-red-500/10"}">
+      <div class="flex items-center gap-2 font-extrabold mb-1 ${feedback.correcta ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}">
+        ${feedback.correcta ? '<span id="feedback-check" class="inline-flex w-5 h-5 rounded-full bg-green-500 text-white text-xs items-center justify-center">✓</span>' : ""}
+        ${feedback.correcta ? "¡Correcto!" : "¡Incorrecto!"}
+      </div>
       ${feedback.explicacion ? `<p class="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">${escapeHtml(feedback.explicacion.explicacion)}</p>` : ""}
       ${feedback.explicacion && feedback.explicacion.tip ? `<p class="text-slate-400 text-xs mt-2 italic">${escapeHtml(feedback.explicacion.tip)}</p>` : ""}
     </div>
-    <button id="btn-siguiente" class="w-full mt-4 bg-slate-900 text-white font-bold rounded-2xl py-4">${esUltima ? "Ver resultados" : "Siguiente pregunta"}</button>
+    <button id="btn-siguiente" class="w-full mt-4 bg-slate-900 text-white font-bold rounded-2xl py-4 ${CLASE_BTN_PRIMARIO}">${esUltima ? "Ver resultados" : "Siguiente pregunta"}</button>
   `
     : "";
 
@@ -487,15 +646,9 @@ function renderPregunta() {
             <div class="text-xs text-slate-400">Pregunta ${state.indice + 1} de ${state.preguntas.length}</div>
           </div>
         </div>
-        <div class="flex gap-2">
-          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-center shadow-sm min-w-[52px]">
-            <div class="font-extrabold text-indigo-600 dark:text-indigo-400 leading-none" id="pts-display">${state.puntaje}</div>
-            <div class="text-[10px] text-slate-400 font-bold">PTS</div>
-          </div>
-          <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-center shadow-sm min-w-[52px]">
-            <div class="font-extrabold text-amber-500 leading-none" id="racha-display">🔥${state.racha}</div>
-            <div class="text-[10px] text-slate-400 font-bold">RACHA</div>
-          </div>
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-center shadow-sm min-w-[52px]">
+          <div class="font-extrabold text-amber-500 leading-none" id="racha-display">🔥${state.racha}</div>
+          <div class="text-[10px] text-slate-400 font-bold">RACHA</div>
         </div>
       </div>
       <div class="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mb-5">
@@ -511,15 +664,22 @@ function renderPregunta() {
     </div>
   `);
 
+  // render() oculta el HUD por defecto (ver su definicion) - se vuelve a mostrar en
+  // cada pregunta; la primera vez, iniciarQuiz() ademas dispara el reveal grande.
+  mostrarHud();
+
   if (typeof gsap !== "undefined") {
     gsap.to("#progreso-relleno", { width: `${progresoPct}%`, duration: 0.5, ease: "power2.out" });
   } else {
     document.getElementById("progreso-relleno").style.width = `${progresoPct}%`;
   }
 
+  if (feedback && feedback.correcta) animarAcierto();
+
   if (!feedback) {
     root.querySelectorAll(".opcion-input").forEach((input) => {
       input.addEventListener("change", () => {
+        actualizarSeleccionVisual();
         if (p.es_multiple) {
           const btnConfirmar = document.getElementById("btn-confirmar");
           const algunaMarcada = root.querySelectorAll(".opcion-input:checked").length > 0;
@@ -563,14 +723,19 @@ async function responderPregunta(ids) {
       body: JSON.stringify({ pregunta_id: p.id, opciones_seleccionadas: ids }),
     });
     state.respuestas.push({ pregunta_id: p.id, opciones_seleccionadas: ids });
+    let puntosGanados = 0;
+    const puntajeAnterior = state.puntaje;
     if (resultado.correcta) {
       state.racha += 1;
-      state.puntaje += 100 + 20 * (state.racha - 1);
+      const mult = MULTIPLICADOR_DIFICULTAD[resultado.dificultad] ?? 1.0;
+      puntosGanados = Math.round(100 * mult) + BONUS_POR_RACHA * (state.racha - 1);
+      state.puntaje += puntosGanados;
     } else {
       state.racha = 0;
     }
     state.feedbackActual = resultado;
     renderPregunta();
+    if (resultado.correcta) animarGananciaPuntos(puntosGanados, puntajeAnterior, state.puntaje);
   } catch (err) {
     alert("Error al comprobar la respuesta: " + err.message);
   }
@@ -633,33 +798,24 @@ function renderResultadoFinal(r) {
       <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 mb-6 text-left">
         ${renderMedallasHtml(r.medallas || [])}
       </div>
-      <button id="btn-ver-clasificacion" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-2xl py-4 shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 mb-3">Ver clasificación</button>
-      <button id="btn-jugar-de-nuevo" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 font-semibold text-slate-700 dark:text-slate-200">Jugar de nuevo</button>
+      <button id="btn-ver-clasificacion" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-2xl py-4 shadow-lg shadow-indigo-200 dark:shadow-indigo-950/60 mb-3 ${CLASE_BTN_PRIMARIO}">Ver clasificación</button>
+      <button id="btn-jugar-de-nuevo" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 font-semibold text-slate-700 dark:text-slate-200 ${CLASE_BTN_SECUNDARIO}">Jugar de nuevo</button>
     </div>
   `);
 
   animarPuntaje(r.puntaje);
   celebrarConfeti();
 
-  document.getElementById("btn-ver-clasificacion").addEventListener("click", () => renderRanking(state.categoriaActual));
+  document.getElementById("btn-ver-clasificacion").addEventListener("click", () => renderRanking(state.categoriaActual, state.nivel));
   document.getElementById("btn-jugar-de-nuevo").addEventListener("click", renderLanding);
 }
 
 function animarPuntaje(puntajeFinal) {
   const el = document.getElementById("puntaje-numero");
-  if (typeof gsap === "undefined") {
-    el.textContent = `${puntajeFinal}`;
-    return;
-  }
-  const contador = { valor: 0 };
-  gsap.to(contador, {
-    valor: puntajeFinal,
-    duration: 1.1,
-    ease: "power1.out",
-    onUpdate: () => {
-      el.textContent = `${Math.round(contador.valor)}`;
-    },
+  animarContador(el, 0, puntajeFinal, {
+    duracion: 1.1,
     onComplete: () => {
+      if (typeof gsap === "undefined") return;
       gsap.fromTo(el, { scale: 1 }, { scale: 1.12, duration: 0.25, yoyo: true, repeat: 3, ease: "power1.inOut" });
     },
   });
@@ -667,37 +823,124 @@ function animarPuntaje(puntajeFinal) {
 
 // --- Pantalla 7: clasificacion (ranking) ---
 
-async function renderRanking(slug) {
+// Oro / plata / bronce: gradientes que van del color de marca (el resto de
+// la lista) hacia un dorado tipo medalla en el 1er puesto. El hexagono del
+// medallon es el mismo motivo que usan las credenciales reales de AWS.
+const MEDALLAS_RANKING = [
+  {
+    gradiente: "linear-gradient(135deg, #F9E29B, #B8860B)",
+    sombra: "shadow-[0_0_18px_rgba(184,134,11,0.45)]",
+    anillo: "ring-2 ring-amber-300/70 dark:ring-amber-400/40",
+    fondo: "from-amber-50 to-white dark:from-amber-500/10 dark:to-slate-800",
+    borde: "border-amber-300/70 dark:border-amber-500/40",
+  },
+  {
+    gradiente: "linear-gradient(135deg, #EEF1F5, #94A3B8)",
+    sombra: "",
+    anillo: "ring-2 ring-slate-300/60 dark:ring-slate-500/40",
+    fondo: "from-slate-100 to-white dark:from-slate-700/40 dark:to-slate-800",
+    borde: "border-slate-300/70 dark:border-slate-600/60",
+  },
+  {
+    gradiente: "linear-gradient(135deg, #E3A873, #8B5A2B)",
+    sombra: "",
+    anillo: "ring-2 ring-orange-300/50 dark:ring-orange-500/30",
+    fondo: "from-orange-50/70 to-white dark:from-orange-900/10 dark:to-slate-800",
+    borde: "border-orange-300/60 dark:border-orange-700/50",
+  },
+];
+
+function renderFilaRanking(f, i) {
+  return `
+    <div class="flex items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-3.5 shadow-sm">
+      <div class="w-7 text-center font-extrabold text-slate-300 dark:text-slate-600">${i + 4}</div>
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style="background-color:${f.color || "#e2e8f0"}">${f.avatar || "👤"}</div>
+      <div class="flex-1 min-w-0">
+        <div class="font-bold truncate">${escapeHtml(f.username)}</div>
+        <div class="text-xs text-slate-400">${f.aciertos ?? "-"}/${f.total ?? "-"} · 🔥${f.mejor_racha ?? 0}</div>
+      </div>
+      <div class="font-extrabold text-indigo-600 dark:text-indigo-400">${f.puntaje}</div>
+    </div>`;
+}
+
+// Podio elevado para el top 3: orden visual 2do-1ro-3ro (como un podio olimpico),
+// cada columna con la altura/gradiente de MEDALLAS_RANKING segun su puesto real.
+const ALTURA_PEDESTAL = ["h-24", "h-32", "h-16"]; // indice = puesto-1 (0=oro, 1=plata, 2=bronce)
+const ORDEN_VISUAL = [1, 0, 2]; // plata, oro, bronce (izquierda a derecha)
+
+function renderPodio(top3) {
+  const columnas = ORDEN_VISUAL.map((idx) => {
+    const f = top3[idx];
+    if (!f) return `<div></div>`;
+    const medalla = MEDALLAS_RANKING[idx];
+    const esOro = idx === 0;
+    return `
+      <div class="flex flex-col items-center">
+        <div class="relative mb-2">
+          ${esOro ? '<span class="corona-flotante absolute -top-6 left-1/2 -translate-x-1/2 text-2xl" aria-hidden="true">👑</span>' : ""}
+          <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shadow-lg ${medalla.anillo}" style="background-color:${f.color || "#e2e8f0"}">${f.avatar || "👤"}</div>
+          <div class="medalla-hex absolute -bottom-2 -right-2 w-7 h-7 flex items-center justify-center font-extrabold text-white text-xs ${medalla.sombra}" style="background:${medalla.gradiente}">${idx + 1}</div>
+        </div>
+        <div class="font-bold text-sm text-center truncate max-w-[90px]">${escapeHtml(f.username)}</div>
+        <div class="font-extrabold text-indigo-600 dark:text-indigo-400 text-sm mb-2">${f.puntaje}</div>
+        <div class="w-full ${ALTURA_PEDESTAL[idx]} rounded-t-xl bg-gradient-to-b ${medalla.fondo} border ${medalla.borde} flex items-start justify-center pt-2">
+          <span class="font-black text-2xl opacity-40">${idx + 1}</span>
+        </div>
+      </div>`;
+  });
+  return `<div class="grid grid-cols-3 gap-3 items-end mb-6" id="podio-ranking">${columnas.join("")}</div>`;
+}
+
+function renderTabsNivel(nivelActivo) {
+  const tabs = NIVELES.map(
+    (nv) => `
+      <button class="tab-nivel px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+        nv.n === nivelActivo
+          ? "text-white shadow-sm"
+          : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"
+      }" style="${nv.n === nivelActivo ? `background-color:${nv.color}` : ""}" data-n="${nv.n}">${nv.icono} ${nv.nombre}</button>`
+  ).join("");
+  return `<div class="flex gap-2 mb-4 overflow-x-auto pb-1">${tabs}</div>`;
+}
+
+async function renderRanking(slug, nivel) {
+  nivel = nivel || NIVELES[0].n;
   render(`<p class="text-slate-400 text-center py-10">Cargando clasificación...</p>`);
   try {
-    const filas = await api(`/ranking?categoria=${slug}`);
+    const filas = await api(`/ranking?categoria=${slug}&nivel=${nivel}`);
     const categoria = state.categorias.find((c) => c.slug === slug);
+    const nivelInfo = NIVELES.find((nv) => nv.n === nivel);
 
-    const filasHtml = filas
-      .map(
-        (f, i) => `
-      <div class="flex items-center gap-3 bg-white dark:bg-slate-800 border ${i === 0 ? "border-amber-300 dark:border-amber-500/60" : "border-slate-200 dark:border-slate-700"} rounded-2xl p-3.5 shadow-sm">
-        <div class="w-7 text-center font-extrabold ${i === 0 ? "text-amber-500" : "text-slate-300 dark:text-slate-600"}">${i + 1}</div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style="background-color:${f.color || "#e2e8f0"}">${f.avatar || "👤"}</div>
-        <div class="flex-1 min-w-0">
-          <div class="font-bold truncate">${escapeHtml(f.username)}</div>
-          <div class="text-xs text-slate-400">${f.aciertos ?? "-"}/${f.total ?? "-"} · 🔥${f.mejor_racha ?? 0}</div>
-        </div>
-        <div class="font-extrabold text-indigo-600 dark:text-indigo-400">${f.puntaje}</div>
-      </div>`
-      )
-      .join("");
+    const top3 = filas.slice(0, 3);
+    const resto = filas.slice(3);
+    const podioHtml = top3.length > 0 ? renderPodio(top3) : "";
+    const restoHtml = resto.map(renderFilaRanking).join("");
+    const vacioHtml = filas.length === 0
+      ? `<p class="text-slate-400 text-center py-6">Nadie jugó "${escapeHtml(nivelInfo ? nivelInfo.nombre : nivel)}" en esta categoría todavía. ¡Sé el primero!</p>`
+      : "";
 
     render(`
       <div>
         <button id="btn-atras" class="text-slate-400 text-sm font-semibold mb-4">← Inicio</button>
         <h1 class="text-3xl font-extrabold mb-1">Clasificación</h1>
-        <p class="text-slate-500 dark:text-slate-400 mb-6">Los mejores jugadores en ${escapeHtml(categoria ? categoria.nombre : slug)}.</p>
-        <div class="flex flex-col gap-2.5" id="lista-ranking">${filasHtml || '<p class="text-slate-400 text-center py-6">Aún no hay resultados en esta categoría.</p>'}</div>
+        <p class="text-slate-500 dark:text-slate-400 mb-4">Top 20 en ${escapeHtml(categoria ? categoria.nombre : slug)}.</p>
+        ${renderTabsNivel(nivel)}
+        ${podioHtml}
+        <div class="flex flex-col gap-2.5" id="lista-ranking">${restoHtml}</div>
+        ${vacioHtml}
       </div>
     `);
+
     animarListaEscalonada("#lista-ranking > div");
+    if (typeof gsap !== "undefined" && top3.length > 0) {
+      gsap.from("#podio-ranking > div", { y: 30, opacity: 0, duration: 0.5, ease: "power2.out", stagger: { each: 0.12, from: "center" }, delay: 0.1 });
+      gsap.from(".medalla-hex", { scale: 0, rotate: -25, opacity: 0, duration: 0.6, ease: "back.out(2.2)", stagger: 0.12, delay: 0.35 });
+    }
+
     document.getElementById("btn-atras").addEventListener("click", renderLanding);
+    root.querySelectorAll(".tab-nivel").forEach((btn) => {
+      btn.addEventListener("click", () => renderRanking(slug, Number(btn.dataset.n)));
+    });
   } catch (err) {
     render(`<p class="text-red-500 text-center py-10">Error cargando la clasificación: ${escapeHtml(err.message)}</p>`);
   }

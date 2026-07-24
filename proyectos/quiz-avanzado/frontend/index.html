@@ -17,11 +17,20 @@
   })();
 </script>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+<body class="fondo-hex-sutil min-h-screen text-slate-900 dark:text-slate-100 font-sans transition-colors">
 <button id="btn-tema" type="button" aria-label="Cambiar tema" title="Cambiar tema"
   class="fixed top-4 right-4 z-40 w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-lg">
   ☀️
 </button>
+<!-- HUD de puntaje: vive fuera de #screen-root a proposito, para sobrevivir el
+     render() de cada pregunta (que reemplaza #screen-root entero). Oculto salvo
+     durante preguntas/resultado; ver mostrarHud()/ocultarHud() en app.js. -->
+<div id="hud-puntaje" class="fixed top-4 left-4 z-40 hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-2 shadow-lg text-center">
+  <div id="hud-puntaje-valor" class="font-extrabold text-xl leading-none bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent tabular-nums">0</div>
+  <div class="text-[9px] text-slate-400 font-bold tracking-wide">PUNTOS</div>
+</div>
+<!-- Capa para el "0" inicial gigante y los popups "+N" que vuelan hacia el HUD. -->
+<div id="popup-layer" class="fixed inset-0 z-50 pointer-events-none overflow-hidden"></div>
 <div id="app" class="max-w-xl mx-auto px-4 py-10">
   <main id="screen-root">
     <p class="text-slate-400 text-center py-10">Cargando...</p>
