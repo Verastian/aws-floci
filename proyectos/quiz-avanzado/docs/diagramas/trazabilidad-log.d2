@@ -1,31 +1,91 @@
 direction: right
 
-codigo: "lambda/categories/index.js:23\n\nconsole.log(\n  \"categories: listando categorias\"\n);" {
-  style.font: mono
-  style.fill: "#1e293b"
-  style.font-color: "#e2e8f0"
-  style.stroke: "#334155"
+stage_codigo: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  direction: down
+
+  ruta: "lambda/categories/index.js:23" {
+    style.fill: transparent
+    style.stroke: transparent
+    style.bold: true
+    style.font-color: "#0f172a"
+  }
+  icono: "Código fuente" {
+    icon: https://icons.terrastruct.com/aws%2FDeveloper%20Tools%2FAWS-CodeCommit_light-bg.svg
+    shape: image
+  }
+  contenido: "console.log(\n  \"categories: listando categorias\"\n);" {
+    style.font: mono
+    style.fill: "#1e293b"
+    style.font-color: "#e2e8f0"
+    style.stroke: "#334155"
+  }
 }
 
-logs: "CloudWatch Logs\n/aws/lambda/quiz-avanzado-categories" {
-  icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
-  shape: image
+stage_logs: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  direction: down
+
+  ruta: "/aws/lambda/quiz-avanzado-categories" {
+    style.fill: transparent
+    style.stroke: transparent
+    style.bold: true
+    style.font-color: "#0f172a"
+  }
+  icono: "CloudWatch Logs" {
+    icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
+    shape: image
+  }
 }
 
-comando: "Comando (paso 4)\n\naws logs get-log-events \\\n  --log-group-name /aws/lambda/quiz-avanzado-categories \\\n  --log-stream-name '<stream>' --profile floci" {
-  style.font: mono
-  style.fill: "#1e293b"
-  style.font-color: "#e2e8f0"
-  style.stroke: "#334155"
+stage_comando: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  direction: down
+
+  ruta: "aws logs get-log-events" {
+    style.fill: transparent
+    style.stroke: transparent
+    style.bold: true
+    style.font-color: "#0f172a"
+  }
+  icono: "Comando (paso 4)" {
+    icon: https://icons.terrastruct.com/aws%2FDeveloper%20Tools%2FAWS-Command-Line-Interface_light-bg.svg
+    shape: image
+  }
+  contenido: "aws logs get-log-events \\\n  --log-group-name /aws/lambda/quiz-avanzado-categories \\\n  --log-stream-name '<stream>' --profile floci" {
+    style.font: mono
+    style.fill: "#1e293b"
+    style.font-color: "#e2e8f0"
+    style.stroke: "#334155"
+  }
 }
 
-respuesta: "Respuesta (recortada)\n\n{\n  \"events\": [\n    { \"message\":\n      \"...categories: listando categorias\" }\n  ]\n}" {
-  style.font: mono
-  style.fill: "#1e293b"
-  style.font-color: "#e2e8f0"
-  style.stroke: "#334155"
+stage_respuesta: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  direction: down
+
+  ruta: "events[].message" {
+    style.fill: transparent
+    style.stroke: transparent
+    style.bold: true
+    style.font-color: "#0f172a"
+  }
+  icono: "Respuesta (JSON)" {
+    icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAWS-Systems-Manager_Documents_light-bg.svg
+    shape: image
+  }
+  contenido: "{\n  \"events\": [\n    { \"message\":\n      \"...categories: listando categorias\" }\n  ]\n}" {
+    style.font: mono
+    style.fill: "#1e293b"
+    style.font-color: "#e2e8f0"
+    style.stroke: "#334155"
+  }
 }
 
-codigo -> logs: "se ejecuta al invocar\nla Lambda (Floci lo reenvía)"
-logs -> comando: "tú consultas con"
-comando -> respuesta: "devuelve"
+stage_codigo -> stage_logs: "se ejecuta al invocar\nla Lambda (Floci lo reenvía)"
+stage_logs -> stage_comando: "tú consultas con"
+stage_comando -> stage_respuesta: "devuelve"
