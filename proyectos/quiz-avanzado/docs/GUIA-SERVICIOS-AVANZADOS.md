@@ -199,6 +199,7 @@ Se probó de punta a punta contra `quiz-avanzado`, sobre la métrica `Errors` de
 - ❌ **La evaluación automática no ocurre**: se publicó manualmente un datapoint que debía cruzar el umbral (`Errors = 1`), y tras esperar más de 2 minutos (dos períodos completos) el estado seguía en `INSUFFICIENT_DATA` — nunca pasó a `ALARM`. En AWS real, esa transición sería automática y ocurriría en cuestión de minutos.
 - ❌ **El historial no está implementado**: `describe-alarm-history` devuelve directamente `UnsupportedOperation`, no una lista vacía — confirma que esta pieza ni siquiera se intenta emular.
 - ✅ **El control manual sí funciona**: `set-alarm-state` (el comando que existe en AWS real justamente para *probar* una alarma sin esperar a que se cumpla la condición) cambió el estado a `ALARM` al instante.
+- ⚠️ **Hallazgo 4 — bug del `aws-cli` con `--dimensions` en `put-metric-data`** (no de Floci, de la interacción entre ambos): el atajo `--dimensions Name=FunctionName,Value=quiz-avanzado-categories` funciona perfecto en `get-metric-statistics` y `list-metrics`, pero en `put-metric-data` contra Floci guarda dos dimensiones basura — `{"Name": "Name", "Value": "FunctionName"}` y `{"Name": "Value", "Value": "quiz-avanzado-categories"}` — en vez de la única dimensión esperada. Se confirmó reproduciéndolo dos veces. La forma que sí funciona es la sintaxis JSON completa con `--metric-data` (ver paso 11 de la verificación). Esto no afecta a las 6 Lambdas del proyecto — publican con el SDK de JavaScript, no con `aws-cli`, y ahí las dimensiones siempre se vieron correctas (confirmado en el paso 7). Por las dudas, se **repitió la prueba del hallazgo anterior con datos garantizados correctos** (una alarma sobre `Invocations`, poblada por una invocación real de la app en vez de `put-metric-data` a mano): mismo resultado, `INSUFFICIENT_DATA` después de 2 minutos — el hallazgo de que la evaluación automática no ocurre queda confirmado independientemente de este bug de sintaxis.
 
 **Conclusión práctica**: en este entorno, Alarms sirve para **definir** alarmas y para **probar acciones** conectadas a ellas empujando el estado a mano con `set-alarm-state` — pero no sirve como vigilancia automática real de una métrica en producción, porque el motor que hace esa vigilancia periódica no está implementado. La alarma de prueba se creó, se verificó y se borró en el mismo momento (no quedó como parte permanente de la infraestructura de este proyecto); cuando en la Fase 5 exista SNS, se construye ahí la alarma real con una acción de notificación con propósito de negocio, reutilizando lo aprendido acá.
 
@@ -206,17 +207,51 @@ Se probó de punta a punta contra `quiz-avanzado`, sobre la métrica `Errors` de
 
 Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el perfil `floci` de `aws-cli` configurado — ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2](../../quiz/docs/GUIA-PASO-A-PASO.md#2-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca) si no los tienes listos. Los pasos 6-7 (Método B) además requieren acceso SSH directo al VPS (`ssh <tu-usuario>@<TU-HOSTNAME-VPS>`, ver `plataforma/.env`), no solo el túnel.
 
+Cada paso incluye la salida real que devolvió al ejecutarlo contra `quiz-avanzado`, qué campos vale la pena mirar, y una línea de sintaxis para los flags que no se explican solos.
+
 **Método A — CloudWatch (portátil, funciona igual contra AWS real):**
 
 1. **Generar una invocación real** (cualquiera de las 6 rutas sirve; esta usa `categories`, la más simple):
    ```bash
    curl -s "http://localhost:4566/restapis/a7f3682d91/\$default/_user_request_/categories"
    ```
+   Salida real:
+   ```json
+   [{"slug":"aws-cloud-practitioner","nombre":"AWS Cloud Practitioner","tiene_preguntas":true},{"slug":"python","nombre":"Python","tiene_preguntas":false},{"slug":"linux","nombre":"Linux","tiene_preguntas":false}]
+   ```
+   Esto es la respuesta normal del endpoint — no tiene nada de CloudWatch todavía, solo genera la actividad que los pasos siguientes van a observar.
+
 2. **Confirmar que existe el Log Group** (el "cuaderno" de la analogía — uno por función, creado automáticamente):
    ```bash
    aws logs describe-log-groups --log-group-name-prefix /aws/lambda/quiz-avanzado --profile floci
    ```
-   Fíjate en el campo `logGroupName` de la respuesta: eso es exactamente el Log Group del concepto de la sección 2.4.
+   **Sintaxis:** `--log-group-name-prefix` filtra para no traer también los grupos de `quiz-*` o `hello-world` de los otros proyectos de este repo.
+
+   Salida real (recortada a 2 de los 6 grupos — los otros 4 son idénticos, solo cambia el nombre):
+   ```json
+   {
+       "logGroups": [
+           {
+               "logGroupName": "/aws/lambda/quiz-avanzado-answer",
+               "metricFilterCount": 0,
+               "arn": "arn:aws:logs:us-east-1:000000000000:log-group:/aws/lambda/quiz-avanzado-answer",
+               "storedBytes": 0
+           },
+           {
+               "logGroupName": "/aws/lambda/quiz-avanzado-categories",
+               "metricFilterCount": 0,
+               "arn": "arn:aws:logs:us-east-1:000000000000:log-group:/aws/lambda/quiz-avanzado-categories",
+               "storedBytes": 0
+           }
+       ]
+   }
+   ```
+   **Qué mirar:**
+   - `logGroupName`: el "cuaderno" — es exactamente el Log Group del concepto de la sección 2.4, y el valor que vas a usar como `--log-group-name` en el paso siguiente.
+   - `arn`: el identificador único del recurso en toda la cuenta/región — lo pedirías si tuvieras que darle permiso a otro rol para leer *este* grupo puntual (a diferencia de `cloudwatch:PutMetricData`, que en la Fase 2 no admitió restringir por recurso).
+   - `storedBytes` en `0`: no es un error — Floci no lo mantiene actualizado en esta vista (compará con el `storedBytes` real que sí aparece por *stream*, en el paso 3).
+   - `metricFilterCount`: cuántas *metric filters* tiene ese grupo (una funcionalidad de CloudWatch Logs para convertir patrones de texto en métricas — no se usa en este proyecto, por eso siempre da `0`).
+
 3. **Encontrar el stream con contenido más reciente** (el Log Stream — "una página" — no uses `aws logs tail`, ver Hallazgo 3):
    ```bash
    aws logs describe-log-streams \
@@ -224,14 +259,59 @@ Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el per
      --profile floci --output json \
      | python3 -c "import json,sys; d=json.load(sys.stdin); s=[x for x in d['logStreams'] if x.get('storedBytes',0)>0]; print(s[-1]['logStreamName'] if s else 'sin contenido aun')"
    ```
-   El valor que imprime (algo como `2026/07/23/[$LATEST]49c78e12`) es el nombre de ese Log Stream.
+   **Sintaxis:** sin el `| python3 ...`, este comando por sí solo (`aws logs describe-log-streams --log-group-name ... --profile floci`) ya te muestra todos los streams — el `python3` solo automatiza "quedarme con el más reciente que tenga contenido", algo que a mano harías mirando la lista.
+
+   Salida real sin filtrar (2 de los 6 streams que tenía este grupo — nota la diferencia entre uno vacío y uno con datos):
+   ```json
+   {
+     "logStreamName": "2026/07/05/[$LATEST]0adfd648",
+     "lastIngestionTime": 0,
+     "arn": "arn:aws:logs:...:log-stream:2026/07/05/[$LATEST]0adfd648",
+     "storedBytes": 0
+   },
+   {
+     "logStreamName": "2026/07/24/[$LATEST]4975022a",
+     "firstEventTimestamp": 1784840273939,
+     "lastEventTimestamp": 1784840273939,
+     "lastIngestionTime": 1784840273939,
+     "storedBytes": 124
+   }
+   ```
+   **Qué mirar:**
+   - `logStreamName` trae codificada la fecha y la versión de la función (`$LATEST`, porque este proyecto no publica versiones numeradas) — por eso se abre uno nuevo por día, no uno por invocación.
+   - `storedBytes` en `0` acá **sí** es real (a diferencia del paso 2): ese stream específico nunca recibió una línea.
+   - `firstEventTimestamp`/`lastEventTimestamp` (epoch en milisegundos) solo aparecen si el stream tiene contenido — es la señal más rápida de "este es el que me interesa", que es justo lo que el filtro de Python aprovecha.
+
 4. **Leer el contenido de ese stream** (cada elemento de `events` es un Log Event — "una línea escrita"; reemplaza `<stream>` por el valor del paso anterior):
    ```bash
    aws logs get-log-events \
      --log-group-name /aws/lambda/quiz-avanzado-categories \
      --log-stream-name '<stream>' --profile floci
    ```
-   Deberías ver algo como `"categories: listando categorias"`.
+   **Sintaxis:** las comillas simples alrededor de `<stream>` son obligatorias — el nombre real trae `[$LATEST]`, y sin comillas la shell intentaría expandir `$LATEST` como si fuera una variable de entorno (que no existe, así que el comando fallaría en silencio con un nombre de stream vacío).
+
+   Salida real (de una invocación distinta a la del paso 1, para mostrar también el caso con "ruido"):
+   ```json
+   {
+     "events": [
+       {
+         "timestamp": 1784856250259,
+         "message": "2026-07-24T01:24:10.256Z\tf4ab934a-...\tINFO\tcategories: listando categorias",
+         "ingestionTime": 1784856250259
+       },
+       {
+         "timestamp": 1784856575530,
+         "message": "[ERROR] [1784856575529] LAMBDA_RUNTIME Failed to get next invocation. No Response from endpoint",
+         "ingestionTime": 1784856575530
+       }
+     ],
+     "nextForwardToken": "f/3",
+     "nextBackwardToken": "b/0"
+   }
+   ```
+   **Qué mirar:**
+   - `events[].message`: acá está tu `console.log`, con el formato estándar de Lambda (`timestamp` + `request id` + nivel + tu texto) — pero **no todo lo que aparece en un stream es tu propio código**. El segundo evento de este ejemplo es un mensaje interno del *runtime* de Lambda cuando el contenedor se apaga por inactividad (el mismo fenómeno de *warm/cold start* de la sección 2.6) — no es un error de la aplicación, aunque diga `[ERROR]`.
+   - `nextForwardToken`/`nextBackwardToken`: para paginar si el stream tuviera miles de eventos — con el volumen de este proyecto nunca hace falta usarlos.
 
 **Método B — Docker directo en el VPS (exclusivo de este entorno, ver sección 2.6):**
 
@@ -239,11 +319,21 @@ Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el per
    ```bash
    ssh <tu-usuario>@<TU-HOSTNAME-VPS> "docker ps --format '{{.Names}}' | grep quiz-avanzado-categories"
    ```
+   Salida real:
+   ```
+   floci-quiz-avanzado-categories-107b8e53
+   ```
+   El sufijo (`107b8e53`) cambia cada vez que Floci recicla el contenedor por inactividad — es normal que no coincida con ejecuciones anteriores.
+
 6. **Leer su salida cruda, sin pasar por CloudWatch** (reemplaza `<contenedor>` por el nombre que imprimió el paso anterior):
    ```bash
    ssh <tu-usuario>@<TU-HOSTNAME-VPS> "docker logs <contenedor>"
    ```
-   Debería mostrar la misma línea que en el paso 4 — es el mismo `console.log`, visto por el otro camino del diagrama de la sección 2.6.
+   Salida real:
+   ```
+   2026-07-24T01:31:38.170Z	249b49b7-7676-4bf9-acea-78e7de06d384	INFO	categories: listando categorias
+   ```
+   Mismo formato que `events[].message` del paso 4 — es literalmente el mismo texto, solo que leído directo del proceso en vez de a través de la capa de CloudWatch (por eso acá no aparece el ruido del *runtime* del paso 4: ese mensaje lo agrega la capa de emulación, no el contenedor).
 
 **Métricas — confirmar la implementación real (ver Hallazgo 2):**
 
@@ -251,7 +341,25 @@ Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el per
    ```bash
    aws cloudwatch list-metrics --namespace "QuizAvanzado/Lambda" --profile floci
    ```
-   Deberías ver `Invocations`, `Errors` y `Duration`, cada una con la dimensión `FunctionName`.
+   Salida real (2 de las 18 entradas — hay 6 funciones × 3 métricas cada una):
+   ```json
+   {
+     "Metrics": [
+       {
+         "Namespace": "QuizAvanzado/Lambda",
+         "MetricName": "Invocations",
+         "Dimensions": [{ "Name": "FunctionName", "Value": "quiz-avanzado-categories" }]
+       },
+       {
+         "Namespace": "QuizAvanzado/Lambda",
+         "MetricName": "Duration",
+         "Dimensions": [{ "Name": "FunctionName", "Value": "quiz-avanzado-categories" }]
+       }
+     ]
+   }
+   ```
+   **Qué mirar:** en CloudWatch, una métrica se identifica por la combinación de **tres** campos — `Namespace` + `MetricName` + `Dimensions` — no por el nombre solo. Por eso `Invocations` de `categories` y `Invocations` de `questions` son dos métricas *distintas* que conviven en la misma lista, diferenciadas únicamente por su `Dimensions`. `list-metrics` solo confirma que la métrica *existe*; no trae ningún valor — para eso es el paso 8.
+
 8. **Leer el valor real** (reemplaza `--metric-name` por `Errors` o `Duration` para ver las otras dos):
    ```bash
    aws cloudwatch get-metric-statistics --namespace "QuizAvanzado/Lambda" --metric-name Invocations \
@@ -259,6 +367,20 @@ Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el per
      --start-time "$(date -u -d '30 minutes ago' +%Y-%m-%dT%H:%M:%S)" --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
      --period 60 --statistics Sum --profile floci
    ```
+   **Sintaxis:** `--period 60` agrupa los datapoints en baldes de 60 segundos; `--statistics Sum` dice cómo agregar los valores dentro de cada balde (`Sum`, `Average`, `Maximum`... — para `Invocations`/`Errors` interesa `Sum`, para `Duration` normalmente `Average`); `--start-time`/`--end-time` van en UTC, por eso el `date -u`.
+
+   Salida real (dos invocaciones en momentos distintos cayeron en baldes de 60s diferentes):
+   ```json
+   {
+     "Label": "Invocations",
+     "Datapoints": [
+       { "Timestamp": "2026-07-23T21:24:00-04:00", "Sum": 1.0, "Unit": "Count" },
+       { "Timestamp": "2026-07-23T21:31:00-04:00", "Sum": 1.0, "Unit": "Count" }
+     ]
+   }
+   ```
+   **Qué mirar:** `Datapoints` es un arreglo, **no un solo número** — un elemento por cada balde de `--period` segundos que tuvo al menos un dato en el rango pedido. Si invocas la función varias veces dentro del mismo minuto, vas a ver un solo datapoint con `Sum` mayor a 1, no varios datapoints de `Sum: 1`.
+
 9. **Confirmar que el namespace automático de AWS real sigue vacío en Floci** (esperado, no es un error tuyo):
    ```bash
    aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Invocations \
@@ -267,30 +389,61 @@ Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el per
      --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
      --period 300 --statistics Sum --profile floci
    ```
+   Salida real:
+   ```json
+   { "Label": "Invocations", "Datapoints": [] }
+   ```
+   Mismo comando que el paso 8, cambiando solo `--namespace` a `AWS/Lambda` — `Datapoints: []` (arreglo vacío, no un error) es exactamente el hallazgo: la estructura de la respuesta es válida, simplemente no hay ningún dato porque nadie lo publicó ahí.
 
-**Alarms — reproducir el hallazgo de la sección 2.7 (opcional, se puede borrar después con `delete-alarms`):**
+**Alarms — reproducir los hallazgos de la sección 2.7 (opcional, se puede borrar después con `delete-alarms`):**
 
 10. **Crear una alarma de prueba y confirmar el estado inicial**:
     ```bash
     aws cloudwatch put-metric-alarm --alarm-name "mi-alarma-de-prueba" \
-      --namespace "QuizAvanzado/Lambda" --metric-name "Errors" \
+      --namespace "QuizAvanzado/Lambda" --metric-name "Invocations" \
       --dimensions Name=FunctionName,Value=quiz-avanzado-categories \
       --statistic Sum --period 60 --evaluation-periods 1 --threshold 0 \
       --comparison-operator GreaterThanThreshold --treat-missing-data notBreaching \
       --profile floci
     aws cloudwatch describe-alarms --alarm-names "mi-alarma-de-prueba" --profile floci
     ```
-    Estado esperado: `INSUFFICIENT_DATA`.
-11. **Forzar un datapoint que cruce el umbral y esperar** (2-3 minutos): el estado seguirá en `INSUFFICIENT_DATA` — esa es la confirmación del hallazgo, no una falla tuya.
-    ```bash
-    aws cloudwatch put-metric-data --namespace "QuizAvanzado/Lambda" --metric-name "Errors" \
-      --dimensions Name=FunctionName,Value=quiz-avanzado-categories --value 1 --profile floci
+    **Sintaxis:** `--comparison-operator GreaterThanThreshold` + `--threshold 0` = "dispará cuando la suma sea mayor que 0"; `--evaluation-periods 1` = "con un solo balde de `--period` que cumpla ya alcanza" (con `2` pediría dos baldes seguidos); `--treat-missing-data notBreaching` evita que la alarma pase a `ALARM` solo por falta de datos.
+
+    Salida real:
+    ```json
+    {
+        "MetricAlarms": [{
+            "AlarmName": "mi-alarma-de-prueba",
+            "AlarmArn": "arn:aws:cloudwatch:us-east-1:000000000000:alarm:mi-alarma-de-prueba",
+            "StateValue": "INSUFFICIENT_DATA",
+            "MetricName": "Invocations",
+            "Namespace": "QuizAvanzado/Lambda",
+            "Statistic": "Sum",
+            "Period": 60,
+            "Threshold": 0.0,
+            "ComparisonOperator": "GreaterThanThreshold"
+        }]
+    }
     ```
+    **Qué mirar:** `StateValue` es el campo que vas a revisar en cada paso siguiente — sus tres valores posibles son `OK`, `ALARM` e `INSUFFICIENT_DATA` (este último, "todavía no tengo suficientes datos para decidir", es el estado inicial normal, también en AWS real).
+
+11. **Publicar un datapoint que cruce el umbral y esperar 2-3 minutos** — usa la sintaxis JSON completa con `--metric-data`, **no** el atajo `--dimensions` (ver Hallazgo 4: ese atajo guarda mal la dimensión en `put-metric-data`, aunque funcione perfecto en los pasos 7-9):
+    ```bash
+    aws cloudwatch put-metric-data --namespace "QuizAvanzado/Lambda" \
+      --metric-data '[{"MetricName":"Invocations","Value":1,"Dimensions":[{"Name":"FunctionName","Value":"quiz-avanzado-categories"}]}]' \
+      --profile floci
+    ```
+    El estado de la alarma (`describe-alarms` del paso anterior) va a seguir en `INSUFFICIENT_DATA` incluso después de esperar — esa es la confirmación del hallazgo de la sección 2.7, no una falla tuya. (Si prefieres no depender de recordar esta sintaxis distinta, alcanza con esperar a que una invocación real de la app publique el dato — el resultado es el mismo, ver el reintento con `Invocations` descrito en el Hallazgo 4.)
+
 12. **Confirmar que el control manual sí funciona**, y limpiar la alarma de prueba:
     ```bash
     aws cloudwatch set-alarm-state --alarm-name "mi-alarma-de-prueba" --state-value ALARM --state-reason "prueba manual" --profile floci
+    aws cloudwatch describe-alarms --alarm-names "mi-alarma-de-prueba" --profile floci --query "MetricAlarms[0].StateValue"
     aws cloudwatch delete-alarms --alarm-names "mi-alarma-de-prueba" --profile floci
     ```
+    **Sintaxis:** `--query` (JMESPath) filtra la respuesta a un solo valor en vez de imprimir el JSON completo — útil cuando, como acá, solo te interesa confirmar un campo puntual.
+
+    Salida real del `--query`: `"ALARM"` — cambia al instante, sin esperar ningún período de evaluación, porque `set-alarm-state` fuerza el estado directamente en vez de calcularlo.
 
 ### 2.9 Qué cambió en el código
 
