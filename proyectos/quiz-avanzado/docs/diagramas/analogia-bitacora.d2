@@ -1,24 +1,51 @@
-direction: right
+direction: down
 
-persona: "📝 Alguien trabajando\n(no importa qué programa)" {
-  style.fill: "#e0f2fe"
-}
-cuaderno: "📓 Un cuaderno de bitácora\n(uno por cada cosa que se vigila)" {
-  style.fill: "#fef3c7"
-}
-pagina: "📄 Una página del cuaderno\n(se abre una nueva de vez en cuando)" {
-  style.fill: "#fde68a"
-}
-linea: "✍️ Una línea escrita\n(fecha + qué pasó)" {
-  style.fill: "#fed7aa"
-}
-vos: "🔍 Tú, después,\nhojeando el cuaderno" {
-  style.fill: "#ede9fe"
+fila1: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  direction: right
+
+  persona: "📝 Alguien trabajando\n(no importa qué programa)" {
+    style.fill: "#e0f2fe"
+    style.font-size: 22
+  }
+  cuaderno: "📓 Un cuaderno de bitácora\n(uno por cada cosa que se vigila)" {
+    style.fill: "#fef3c7"
+    style.font-size: 22
+  }
+  pagina: "📄 Una página del cuaderno\n(se abre una nueva de vez en cuando)" {
+    style.fill: "#fde68a"
+    style.font-size: 22
+  }
+
+  persona -> cuaderno: "1. anota algo" {
+    style.font-size: 20
+  }
+  cuaderno -> pagina: "2. en la página abierta" {
+    style.font-size: 20
+  }
 }
 
-persona -> cuaderno: "1. anota algo"
-cuaderno -> pagina: "2. en la página abierta"
-pagina -> linea: "3. una línea más"
-linea -> vos: "4. lo leés cuando hace falta" {
-  style.stroke-dash: 4
+fila2: "" {
+  style.fill: transparent
+  style.stroke: transparent
+  direction: right
+
+  tu: "🔍 Tú, después,\nhojeando el cuaderno" {
+    style.fill: "#ede9fe"
+    style.font-size: 22
+  }
+  linea: "✍️ Una línea escrita\n(fecha + qué pasó)" {
+    style.fill: "#fed7aa"
+    style.font-size: 22
+  }
+
+  linea -> tu: "4. lo lees cuando hace falta" {
+    style.stroke-dash: 4
+    style.font-size: 20
+  }
+}
+
+fila1.pagina -> fila2.linea: "3. una línea más" {
+  style.font-size: 20
 }

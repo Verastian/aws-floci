@@ -26,7 +26,9 @@ Antes de agregar cualquier servicio avanzado, así quedó `quiz-avanzado` el 202
 
 ![Arquitectura inicial de quiz-avanzado](./imgs/AWS-FLOCI%20-%20Arquitectura%20inicial%20quiz-avanzado.png)
 
-Cinco piezas nada más: el bucket S3 sirve el sitio estático, la API Gateway enruta cada pedido a la Lambda que corresponde, las 6 Lambdas hacen el trabajo real consultando RDS, y cada Lambda tiene su propio rol IAM — pero, en este punto, ese rol solo tiene **Trust Policy** (define quién puede *asumir* el rol; en este caso, el servicio Lambda) y **ninguna Permission Policy** (qué puede *hacer* una vez asumido) — Floci no la exigía para leer/escribir en RDS o S3. Ese detalle importa: es el "antes" que la sección 2 (CloudWatch) viene a cambiar.
+Cinco piezas nada más: el bucket S3 sirve el sitio estático, la API Gateway enruta cada pedido a la Lambda que corresponde, y las 6 Lambdas hacen el trabajo real consultando RDS.
+
+Cada Lambda tiene su propio rol IAM — pero, en este punto, ese rol solo tiene **Trust Policy** (define quién puede *asumir* el rol; en este caso, el servicio Lambda) y **ninguna Permission Policy** (qué puede *hacer* una vez asumido). Floci no la exigía para leer/escribir en RDS o S3. Ese detalle importa: es el "antes" que la sección 2 (CloudWatch) viene a cambiar.
 
 Cada sección de este documento, a partir de acá, parte de esta misma arquitectura y le va agregando una pieza — no son diagramas aislados por servicio, sino capas sobre este mismo dibujo.
 
@@ -36,17 +38,23 @@ Cada sección de este documento, a partir de acá, parte de esta misma arquitect
 
 ### Concepto
 
-Un error común al aprender la nube es pensar que un servicio de DNS (como Route 53) "expone" tu aplicación a internet. **No es así.** Route 53 (o cualquier proveedor de DNS) solo administra un mapa de "el nombre `X` corresponde a la dirección IP `Y`" — es una guía telefónica, no una recepcionista. Quien **atiende** la petición cuando alguien realmente visita ese nombre es otra pieza completamente distinta: un servidor web, un balanceador de carga, un CDN, etc.
+Un error común al aprender la nube es pensar que un servicio de DNS (como Route 53) "expone" tu aplicación a internet. **No es así.**
 
-En este proyecto, esa pieza ya existe en tu VPS: `nginx-proxy-manager`, corriendo fuera de Floci, escuchando en los puertos 80/443. Su trabajo es recibir la petición pública y decidir hacia dónde reenviarla (*reverse proxy*), además de manejar el certificado TLS (HTTPS).
+Route 53 (o cualquier proveedor de DNS) solo administra un mapa de "el nombre `X` corresponde a la dirección IP `Y`" — es una guía telefónica, no una recepcionista. Quien **atiende** la petición cuando alguien realmente visita ese nombre es otra pieza completamente distinta: un servidor web, un balanceador de carga, un CDN, etc.
+
+En este proyecto, esa pieza ya existe en tu VPS: `nginx-proxy-manager`, corriendo fuera de Floci, escuchando en los puertos 80/443.
+
+Su trabajo es recibir la petición pública y decidir hacia dónde reenviarla (*reverse proxy*), además de manejar el certificado TLS (HTTPS).
 
 > Dato curioso: Route 53 **sí** figura como `"running"` en el health check de Floci, así que se puede practicar la API (`aws route53 create-hosted-zone`, etc.). Pero esa emulación no tiene ningún efecto en el DNS público real — sirve para practicar comandos o probar plantillas de infraestructura, no para publicar nada.
 
 ### Por qué hay que tener cuidado
 
-Floci **no implementa autenticación real** — acepta cualquier credencial de AWS. Mientras el puerto 4566 solo sea alcanzable por el túnel SSH, esto es seguro. Si `nginx-proxy-manager` reenvía ese puerto **completo** hacia el público, cualquier persona en internet tendría control total sobre tu nube emulada (podría borrar el bucket S3, leer toda la base de datos vía las APIs de RDS Data, etc.).
+Floci **no implementa autenticación real** — acepta cualquier credencial de AWS. Mientras el puerto 4566 solo sea alcanzable por el túnel SSH, esto es seguro.
 
-La mitigación: nginx debe reenviar **solo** las rutas exactas que la aplicación necesita (el *website endpoint* de S3 y el path de la API Gateway), no el puerto completo. Cualquier otra ruta no configurada devuelve 404 directamente en nginx, sin llegar nunca a Floci.
+Si `nginx-proxy-manager` reenvía ese puerto **completo** hacia el público, cualquier persona en internet tendría control total sobre tu nube emulada (podría borrar el bucket S3, leer toda la base de datos vía las APIs de RDS Data, etc.).
+
+**La mitigación:** nginx debe reenviar **solo** las rutas exactas que la aplicación necesita (el *website endpoint* de S3 y el path de la API Gateway), no el puerto completo. Cualquier otra ruta no configurada devuelve 404 directamente en nginx, sin llegar nunca a Floci.
 
 ### Cómo quedó implementado
 
@@ -62,7 +70,9 @@ La mitigación: nginx debe reenviar **solo** las rutas exactas que la aplicació
 | `https://floci.devera.cloud/site/<bucket>/<ruta>` | `http://floci-floci-1:4566/<ruta>` con `Host: <bucket>.s3-website.us-east-1.localhost:4566` | Cualquier bucket S3 con *static website hosting* habilitado |
 | `https://floci.devera.cloud/restapis/<api_id>/<stage>/_user_request_/<ruta>` | `http://floci-floci-1:4566/restapis/...` (path intacto) | Cualquier HTTP API de API Gateway creada en Floci |
 
-Cualquier otra ruta (por ejemplo `https://floci.devera.cloud/` a secas, o intentar pegarle a la API de gestión de Lambda/IAM/CloudFormation) cae en un destino "trampa" que nunca responde, y nginx devuelve `502` — **nunca** llega a Floci. Así se cumple la regla de la sección anterior: se expone el patrón de *lo que uno mismo decide publicar* (un sitio estático, una API con rutas propias), nunca el puerto 4566 completo ni las APIs de administración de AWS.
+Cualquier otra ruta (por ejemplo `https://floci.devera.cloud/` a secas, o intentar pegarle a la API de gestión de Lambda/IAM/CloudFormation) cae en un destino "trampa" que nunca responde, y nginx devuelve `502` — **nunca** llega a Floci.
+
+Así se cumple la regla de la sección anterior: se expone el patrón de *lo que uno mismo decide publicar* (un sitio estático, una API con rutas propias), nunca el puerto 4566 completo ni las APIs de administración de AWS.
 
 Diagrama de secuencia completo (navegador → nginx → Floci → API Gateway → Lambda → RDS):
 
@@ -71,10 +81,17 @@ Diagrama de secuencia completo (navegador → nginx → Floci → API Gateway �
 **Piezas involucradas:**
 
 - **DNS**: `floci.devera.cloud` (subdominio nuevo sobre un dominio propio ya existente, `devera.cloud`) apunta por A record a la IP del VPS.
-- **Red Docker**: `nginx-proxy-manager` (que corre en su propia red, `nginx-proxy`) se conectó además a `floci_default` (`docker network connect floci_default nginx-proxy-manager-...`) para poder alcanzar el contenedor `floci-floci-1` directamente por nombre — Floci solo publica su puerto en `127.0.0.1` del host, así que sin esto `nginx-proxy-manager` no tenía forma de llegar a él.
+
+- **Red Docker**: `nginx-proxy-manager` (que corre en su propia red, `nginx-proxy`) se conectó además a `floci_default` (`docker network connect floci_default nginx-proxy-manager-...`) para poder alcanzar el contenedor `floci-floci-1` directamente por nombre.
+  Floci solo publica su puerto en `127.0.0.1` del host, así que sin esto `nginx-proxy-manager` no tenía forma de llegar a él.
+
 - **Certificado**: Let's Encrypt real, emitido por `nginx-proxy-manager` (HTTP-01, automático, sin intervención manual).
+
 - **Config de nginx**: `plataforma/nginx/floci-advanced.conf` (committeado) — los dos `location` genéricos de la tabla de arriba, cargados en el "Advanced" tab del Proxy Host.
-- **Script de aplicación**: `plataforma/scripts/npm-configure-floci-host.py` (committeado, idempotente) — usa la API de `nginx-proxy-manager` para crear/actualizar el certificado y el proxy host. Se ejecuta **en el VPS**, con las credenciales de administrador de `nginx-proxy-manager` pasadas por variable de entorno (nunca se guardan en ningún archivo):
+
+- **Script de aplicación**: `plataforma/scripts/npm-configure-floci-host.py` (committeado, idempotente) — usa la API de `nginx-proxy-manager` para crear/actualizar el certificado y el proxy host.
+
+  Se ejecuta **en el VPS**, con las credenciales de administrador de `nginx-proxy-manager` pasadas por variable de entorno (nunca se guardan en ningún archivo):
   ```bash
   NPM_EMAIL=admin@tu-correo \
   NPM_PASS='tu-contraseña' \
@@ -82,13 +99,23 @@ Diagrama de secuencia completo (navegador → nginx → Floci → API Gateway �
   NPM_API_PORT=$(docker port nginx-proxy-manager-q62k-nginx-proxy-manager-1 81/tcp | cut -d: -f2) \
   python3 plataforma/scripts/npm-configure-floci-host.py
   ```
-- **Frontend**: `frontend/app.js` elige `API_BASE` según el hostname (`window.location.hostname.endsWith(".localhost")` → modo túnel con URL absoluta; si no → ruta relativa, porque frontend y API quedan bajo el mismo origen público, lo que además elimina CORS de raíz para el acceso público).
+
+- **Frontend**: `frontend/app.js` elige `API_BASE` según el hostname (`window.location.hostname.endsWith(".localhost")` → modo túnel con URL absoluta; si no → ruta relativa).
+  Frontend y API quedan bajo el mismo origen público, lo que además elimina CORS de raíz para el acceso público.
 
 **Qué NO cambió**: el túnel SSH (`floci-tunnel.service`, ver [`proyectos/quiz/docs/GUIA-PASO-A-PASO.md` §2](../../quiz/docs/GUIA-PASO-A-PASO.md#2-cómo-levantar-el-entorno-y-qué-hacer-si-no-arranca)) sigue siendo necesario para todo lo administrativo — desplegar una Lambda nueva, crear un bucket, correr `aws` en general. Lo único que dejó de depender del túnel es que **otras personas jueguen el Quiz** (o usen cualquier futuro servicio publicado con el mismo patrón).
 
-**Incidente encontrado y resuelto de paso**: al probar el flujo completo, `/restapis/.../categories` devolvía `502` incluso por el túnel (o sea, un problema preexistente, no causado por este cambio). La causa: la imagen Docker `public.ecr.aws/lambda/nodejs:22` (la que Floci usa para ejecutar cualquier Lambda Node.js 22) había desaparecido del caché de Docker del VPS — `docker lambda invoke` fallaba con `Lambda.InitError: No such image`. Se resolvió con `docker pull public.ecr.aws/lambda/nodejs:22` en el VPS. Si esto vuelve a pasar (por ejemplo, tras una limpieza de imágenes con `docker image prune`), el síntoma es el mismo: cualquier Lambda Node 22 devuelve 502/`Lambda.InitError`, y el arreglo es el mismo `docker pull`.
+**Incidente encontrado y resuelto de paso**: al probar el flujo completo, `/restapis/.../categories` devolvía `502` incluso por el túnel (o sea, un problema preexistente, no causado por este cambio).
 
-**(2026-07-18) Efectivamente volvió a pasar** — esta vez tumbó el Quiz original de forma real y visible, no solo como hallazgo incidental. Se identificó la causa raíz (un cron de limpieza de Docker preexistente en el VPS, ajeno a este repo, que borra cualquier imagen sin contenedor activo con más de 24h) y se instaló una prevención: un timer de `systemd` que restaura la imagen automáticamente si el prune vuelve a borrarla. Como la imagen es compartida, esto protege por igual a este fork y al original. Detalle completo del incidente y del fix: [`proyectos/quiz/docs/ARQUITECTURA.md` §15](../../quiz/docs/ARQUITECTURA.md#15-incidente-caída-completa-del-quiz-por-pérdida-de-la-imagen-del-runtime-de-lambda-2026-07-18).
+La causa: la imagen Docker `public.ecr.aws/lambda/nodejs:22` (la que Floci usa para ejecutar cualquier Lambda Node.js 22) había desaparecido del caché de Docker del VPS — `docker lambda invoke` fallaba con `Lambda.InitError: No such image`. Se resolvió con `docker pull public.ecr.aws/lambda/nodejs:22` en el VPS.
+
+Si esto vuelve a pasar (por ejemplo, tras una limpieza de imágenes con `docker image prune`), el síntoma es el mismo: cualquier Lambda Node 22 devuelve 502/`Lambda.InitError`, y el arreglo es el mismo `docker pull`.
+
+**(2026-07-18) Efectivamente volvió a pasar** — esta vez tumbó el Quiz original de forma real y visible, no solo como hallazgo incidental.
+
+Se identificó la causa raíz (un cron de limpieza de Docker preexistente en el VPS, ajeno a este repo, que borra cualquier imagen sin contenedor activo con más de 24h) y se instaló una prevención: un timer de `systemd` que restaura la imagen automáticamente si el prune vuelve a borrarla. Como la imagen es compartida, esto protege por igual a este fork y al original.
+
+Detalle completo del incidente y del fix: [`proyectos/quiz/docs/ARQUITECTURA.md` §15](../../quiz/docs/ARQUITECTURA.md#15-incidente-caída-completa-del-quiz-por-pérdida-de-la-imagen-del-runtime-de-lambda-2026-07-18).
 
 ### Extensión automática a este fork (2026-07-05)
 
@@ -101,7 +128,7 @@ Al crear `quiz-avanzado` (ver `PLAN-SERVICIOS-AVANZADOS.md`, "Contexto de este f
 
 ---
 
-## 2. <img src="./imgs/Icono%20-%20Amazon%20CloudWatch.png" width="28" valign="middle"> CloudWatch: logs y métricas
+## 2. <img src="./imgs/Icono%20-%20Amazon%20CloudWatch.png" width="48" valign="middle"> CloudWatch: logs y métricas
 
 ✅ **Implementado y probado el 2026-07-23**, contra `quiz-avanzado`.
 
@@ -139,13 +166,21 @@ Sobre la [arquitectura inicial](#0-arquitectura-inicial-punto-de-partida) (S3 + 
 
 ![Arquitectura: las 6 Lambdas, CloudWatch Logs y CloudWatch Metrics](./imgs/AWS-FLOCI%20-%20Arquitectura%20CloudWatch%20quiz-avanzado.png)
 
-**Hallazgo 1 — los logs sí son automáticos en Floci, igual que en AWS real.** Antes de esta fase, ninguna de las 6 Lambdas de `quiz-avanzado` escribía nada con `console.log` (el código solo devolvía errores al cliente, nunca los registraba). Se agregó una línea de log al entrar a cada handler y un `console.error` en cada bloque `catch` — un cambio mínimo, sin lógica nueva, solo para tener algo que observar. Tras redesplegar y volver a invocar las 6 funciones, el log apareció en CloudWatch sin ninguna configuración adicional, con el mismo formato que en AWS real (`timestamp` + `request id` + `INFO`/`ERROR` + mensaje):
+**Hallazgo 1 — los logs sí son automáticos en Floci, igual que en AWS real.**
+
+Antes de esta fase, ninguna de las 6 Lambdas de `quiz-avanzado` escribía nada con `console.log` (el código solo devolvía errores al cliente, nunca los registraba). Se agregó una línea de log al entrar a cada handler y un `console.error` en cada bloque `catch` — un cambio mínimo, sin lógica nueva, solo para tener algo que observar.
+
+Tras redesplegar y volver a invocar las 6 funciones, el log apareció en CloudWatch sin ninguna configuración adicional, con el mismo formato que en AWS real (`timestamp` + `request id` + `INFO`/`ERROR` + mensaje):
 
 ```
 2026-07-23T20:05:47.811Z  8153bb2f-d020-44a0-8cc7-c3946dc0116b  INFO  categories: listando categorias
 ```
 
-**Hallazgo 2 — CloudWatch Metrics es un servicio real e independiente en Floci, y ya está implementado en las 6 Lambdas.** El health check interno de Floci (`curl http://localhost:4566/health`) lista `logs` y `monitoring` como dos servicios separados, ambos `"running"` — coincide con que el propio portal de Floci los presenta como "CloudWatch Logs" y "CloudWatch Metrics" por separado, no como una sola cosa. Al confirmar que el servicio funciona de verdad (probado primero con datos manuales, namespace descartable), se decidió aprovecharlo a fondo en vez de dejarlo solo documentado: las 6 Lambdas ahora publican sus propias métricas en cada invocación, con el SDK de AWS (`@aws-sdk/client-cloudwatch`), namespace `QuizAvanzado/Lambda`, dimensión `FunctionName`:
+**Hallazgo 2 — CloudWatch Metrics es un servicio real e independiente en Floci, y ya está implementado en las 6 Lambdas.**
+
+El health check interno de Floci (`curl http://localhost:4566/health`) lista `logs` y `monitoring` como dos servicios separados, ambos `"running"` — coincide con que el propio portal de Floci los presenta como "CloudWatch Logs" y "CloudWatch Metrics" por separado, no como una sola cosa.
+
+Al confirmar que el servicio funciona de verdad (probado primero con datos manuales, namespace descartable), se decidió aprovecharlo a fondo en vez de dejarlo solo documentado: las 6 Lambdas ahora publican sus propias métricas en cada invocación, con el SDK de AWS (`@aws-sdk/client-cloudwatch`), namespace `QuizAvanzado/Lambda`, dimensión `FunctionName`:
 
 - **Invocations** (`Count`): 1 por cada ejecución que llega a consultar la base de datos.
 - **Errors** (`Count`): 1 cuando el bloque `catch` atrapa una excepción, 0 en el camino exitoso.
@@ -161,22 +196,90 @@ aws cloudwatch get-metric-statistics --namespace "QuizAvanzado/Lambda" --metric-
 # → Datapoints: [{ "Sum": 1.0, ... }]
 ```
 
-Esto fue, además, **el primer permiso IAM real que recibió un rol de este proyecto** (`cloudwatch:PutMetricData`, política inline `PublishCloudWatchMetrics` en cada uno de los 6 roles) — hasta ahora todos los roles solo tenían la *trust policy* de la [arquitectura inicial](#0-arquitectura-inicial-punto-de-partida), sin ninguna *permission policy* adjunta. La Fase 3 (Secrets Manager) iba a reclamar ese honor; queda anotado en el plan que en realidad fue esta fase. Vale la pena detenerse acá porque es la primera vez que este proyecto usa la diferencia entre estos dos tipos de política — un concepto que suele confundir a quien recién aprende IAM:
+Esto fue, además, **el primer permiso IAM real que recibió un rol de este proyecto** (`cloudwatch:PutMetricData`, política inline `PublishCloudWatchMetrics` en cada uno de los 6 roles).
+
+Hasta ahora todos los roles solo tenían la *trust policy* de la [arquitectura inicial](#0-arquitectura-inicial-punto-de-partida), sin ninguna *permission policy* adjunta. La Fase 3 (Secrets Manager) iba a reclamar ese honor; queda anotado en el plan que en realidad fue esta fase.
+
+Vale la pena detenerse acá porque es la primera vez que este proyecto usa la diferencia entre estos dos tipos de política — un concepto que suele confundir a quien recién aprende IAM:
 
 ![El mismo rol IAM, antes y después del primer permiso](./imgs/AWS-FLOCI%20-%20IAM%20antes%20y%20despues%20del%20permiso.png)
 
 - La **Trust Policy** nunca cambió: sigue diciendo "el servicio Lambda puede asumir este rol", exactamente igual que en la arquitectura inicial.
 - Lo nuevo es la **Permission Policy** (`PublishCloudWatchMetrics`): una vez asumido el rol, ahora sí puede hacer algo con él (llamar a `cloudwatch:PutMetricData`).
 
+#### Cómo se configuró, en la práctica
+
+El permiso se agrega como una política **inline** (vive pegada al rol, no es un recurso separado reutilizable) sobre un documento JSON estándar de IAM:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "cloudwatch:PutMetricData",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Ese mismo documento se adjuntó a los 6 roles con `put-role-policy` (acá, el rol de `categories`; el comando se repitió cambiando solo `--role-name`):
+
+```bash
+aws iam put-role-policy --role-name quiz-avanzado-categories-role \
+  --policy-name "PublishCloudWatchMetrics" \
+  --policy-document file:///tmp/cloudwatch-metrics-policy.json \
+  --profile floci
+```
+
+**Sintaxis:** `put-role-policy` no devuelve nada en la salida estándar cuando sale bien (sin JSON, sin confirmación) — el silencio *es* el éxito. Para confirmar que quedó bien, hay que pedirlo de vuelta explícitamente:
+
+```bash
+aws iam get-role-policy \
+  --role-name quiz-avanzado-categories-role \
+  --policy-name PublishCloudWatchMetrics \
+  --profile floci
+```
+
+Salida real:
+
+```json
+{
+    "RoleName": "quiz-avanzado-categories-role",
+    "PolicyName": "PublishCloudWatchMetrics",
+    "PolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "cloudwatch:PutMetricData",
+                "Resource": "*"
+            }
+        ]
+    }
+}
+```
+
+**Qué mirar:** `PolicyDocument` es exactamente el JSON que se envió — IAM no lo transforma. Antes de esta fase, el mismo comando hubiera fallado con `NoSuchEntity`, porque esa política todavía no existía sobre el rol (confirmado pidiendo una política inexistente: `An error occurred (NoSuchEntity) when calling the GetRolePolicy operation: Policy ... not found for role ...`).
+
 Y así se usan las dos juntas en tiempo de ejecución, en cada invocación real de `categories`:
 
 ![Flujo de autorización: asumir el rol y usar el permiso](./imgs/AWS-FLOCI%20-%20Flujo%20de%20autorizacion%20IAM.png)
 
-Primero se resuelve **quién es** la Lambda (la Trust Policy, al arrancar, entrega credenciales temporales); después, en cada llamada a una API de AWS, se resuelve **qué puede hacer** con esa identidad (la Permission Policy, evaluada en el momento de la llamada). Son dos preguntas distintas, respondidas por dos políticas distintas — de ahí que agregar el permiso no tocara la *trust policy* para nada.
+Primero se resuelve **quién es** la Lambda: la Trust Policy, al arrancar, entrega credenciales temporales. Después, en cada llamada a una API de AWS, se resuelve **qué puede hacer** con esa identidad: la Permission Policy, evaluada en el momento de la llamada.
 
-Lo que **sigue sin ocurrir** es la parte 100% automática de AWS real: ahí, cualquier Lambda publica sola sus métricas estándar bajo el namespace `AWS/Lambda`, sin que el código tenga que llamar a ningún SDK. Floci no emula ese cableado interno — `get-metric-statistics` sobre `AWS/Lambda` sigue devolviendo siempre vacío, sin importar cuánto se invoquen las funciones. La diferencia con lo de arriba: `QuizAvanzado/Lambda` lo publica *nuestro propio código*, explícitamente; `AWS/Lambda` lo publicaría el motor de Lambda *sin que nuestro código haga nada*, y eso es justamente lo que Floci no tiene implementado.
+Son dos preguntas distintas, respondidas por dos políticas distintas — de ahí que agregar el permiso no tocara la *trust policy* para nada.
 
-**Hallazgo 3 — bug de `aws-cli` al usar `logs tail` contra Floci.** El comando más cómodo para seguir logs en vivo, `aws logs tail /aws/lambda/<funcion> --profile floci`, falla con `aws: [ERROR]: 'logStreamName'` contra este emulador (la respuesta de Floci a la llamada interna que usa `tail` le falta un campo que el cliente de AWS espera). Alternativa que sí funciona siempre, usada para verificar todo lo anterior: `describe-log-streams` para encontrar el stream más reciente + `get-log-events` para leer su contenido (comandos exactos en "Cómo verificarlo tú mismo").
+Lo que **sigue sin ocurrir** es la parte 100% automática de AWS real: ahí, cualquier Lambda publica sola sus métricas estándar bajo el namespace `AWS/Lambda`, sin que el código tenga que llamar a ningún SDK.
+
+Floci no emula ese cableado interno — `get-metric-statistics` sobre `AWS/Lambda` sigue devolviendo siempre vacío, sin importar cuánto se invoquen las funciones. La diferencia con lo de arriba: `QuizAvanzado/Lambda` lo publica *nuestro propio código*, explícitamente; `AWS/Lambda` lo publicaría el motor de Lambda *sin que nuestro código haga nada*, y eso es justamente lo que Floci no tiene implementado.
+
+**Hallazgo 3 — bug de `aws-cli` al usar `logs tail` contra Floci.**
+
+El comando más cómodo para seguir logs en vivo, `aws logs tail /aws/lambda/<funcion> --profile floci`, falla con `aws: [ERROR]: 'logStreamName'` contra este emulador (la respuesta de Floci a la llamada interna que usa `tail` le falta un campo que el cliente de AWS espera).
+
+Alternativa que sí funciona siempre, usada para verificar todo lo anterior: `describe-log-streams` para encontrar el stream más reciente + `get-log-events` para leer su contenido (comandos exactos en "Cómo verificarlo tú mismo").
 
 ### 2.6 Dos formas de ver los mismos logs: CloudWatch vs. Docker directo en el VPS
 
@@ -184,8 +287,12 @@ Esta es la diferencia que vale la pena tener clara al leer logs en este entorno 
 
 ![Dos caminos para ver los mismos logs](./imgs/AWS-FLOCI%20-%20Dos%20caminos%20para%20ver%20logs.png)
 
-- **Método A — por CloudWatch** (`aws logs ...` con `--profile floci`, a través del túnel SSH): es el camino "de AWS", el que se documenta en la sección anterior y en la verificación de abajo. Funciona exactamente igual si esto corriera contra una cuenta de AWS real — es portátil, no necesitas saber nada de Docker para usarlo.
-- **Método B — por Docker, directo en el VPS**: cada Lambda de Floci corre como un contenedor Docker real (ver `CLAUDE.md` raíz de este repo), con nombre `floci-quiz-avanzado-<función>-<hash>` (ej. `floci-quiz-avanzado-categories-949c8d34`), reutilizado entre invocaciones mientras se mantiene "caliente" (el mismo comportamiento de *warm start* de Lambda real). Con acceso SSH directo al VPS (no alcanza con el túnel al puerto 4566, que solo abre la API de Floci, no el Docker del host), `docker logs <contenedor>` muestra el `stdout`/`stderr` crudo del proceso — la misma información que CloudWatch, pero sin pasar por su capa de emulación. Esto **no** tiene equivalente en AWS real (ahí no hay ningún `docker ps` al que asomarse); es una herramienta de depuración exclusiva de este entorno.
+- **Método A — por CloudWatch** (`aws logs ...` con `--profile floci`, a través del túnel SSH): es el camino "de AWS", el que se documenta en la sección anterior y en la verificación de abajo.
+  Funciona exactamente igual si esto corriera contra una cuenta de AWS real — es portátil, no necesitas saber nada de Docker para usarlo.
+
+- **Método B — por Docker, directo en el VPS**: cada Lambda de Floci corre como un contenedor Docker real (ver `CLAUDE.md` raíz de este repo), con nombre `floci-quiz-avanzado-<función>-<hash>` (ej. `floci-quiz-avanzado-categories-949c8d34`), reutilizado entre invocaciones mientras se mantiene "caliente" (el mismo comportamiento de *warm start* de Lambda real).
+  Con acceso SSH directo al VPS (no alcanza con el túnel al puerto 4566, que solo abre la API de Floci, no el Docker del host), `docker logs <contenedor>` muestra el `stdout`/`stderr` crudo del proceso — la misma información que CloudWatch, pero sin pasar por su capa de emulación.
+  Esto **no** tiene equivalente en AWS real (ahí no hay ningún `docker ps` al que asomarse); es una herramienta de depuración exclusiva de este entorno.
 
 ### 2.7 CloudWatch Alarms: qué funciona y qué no
 
@@ -199,9 +306,19 @@ Se probó de punta a punta contra `quiz-avanzado`, sobre la métrica `Errors` de
 - ❌ **La evaluación automática no ocurre**: se publicó manualmente un datapoint que debía cruzar el umbral (`Errors = 1`), y tras esperar más de 2 minutos (dos períodos completos) el estado seguía en `INSUFFICIENT_DATA` — nunca pasó a `ALARM`. En AWS real, esa transición sería automática y ocurriría en cuestión de minutos.
 - ❌ **El historial no está implementado**: `describe-alarm-history` devuelve directamente `UnsupportedOperation`, no una lista vacía — confirma que esta pieza ni siquiera se intenta emular.
 - ✅ **El control manual sí funciona**: `set-alarm-state` (el comando que existe en AWS real justamente para *probar* una alarma sin esperar a que se cumpla la condición) cambió el estado a `ALARM` al instante.
-- ⚠️ **Hallazgo 4 — bug del `aws-cli` con `--dimensions` en `put-metric-data`** (no de Floci, de la interacción entre ambos): el atajo `--dimensions Name=FunctionName,Value=quiz-avanzado-categories` funciona perfecto en `get-metric-statistics` y `list-metrics`, pero en `put-metric-data` contra Floci guarda dos dimensiones basura — `{"Name": "Name", "Value": "FunctionName"}` y `{"Name": "Value", "Value": "quiz-avanzado-categories"}` — en vez de la única dimensión esperada. Se confirmó reproduciéndolo dos veces. La forma que sí funciona es la sintaxis JSON completa con `--metric-data` (ver paso 11 de la verificación). Esto no afecta a las 6 Lambdas del proyecto — publican con el SDK de JavaScript, no con `aws-cli`, y ahí las dimensiones siempre se vieron correctas (confirmado en el paso 7). Por las dudas, se **repitió la prueba del hallazgo anterior con datos garantizados correctos** (una alarma sobre `Invocations`, poblada por una invocación real de la app en vez de `put-metric-data` a mano): mismo resultado, `INSUFFICIENT_DATA` después de 2 minutos — el hallazgo de que la evaluación automática no ocurre queda confirmado independientemente de este bug de sintaxis.
+- ⚠️ **Hallazgo 4 — bug del `aws-cli` con `--dimensions` en `put-metric-data`** (no de Floci, de la interacción entre ambos):
 
-**Conclusión práctica**: en este entorno, Alarms sirve para **definir** alarmas y para **probar acciones** conectadas a ellas empujando el estado a mano con `set-alarm-state` — pero no sirve como vigilancia automática real de una métrica en producción, porque el motor que hace esa vigilancia periódica no está implementado. La alarma de prueba se creó, se verificó y se borró en el mismo momento (no quedó como parte permanente de la infraestructura de este proyecto); cuando en la Fase 5 exista SNS, se construye ahí la alarma real con una acción de notificación con propósito de negocio, reutilizando lo aprendido acá.
+  - El atajo `--dimensions Name=FunctionName,Value=quiz-avanzado-categories` funciona perfecto en `get-metric-statistics` y `list-metrics`.
+  - Pero en `put-metric-data` contra Floci guarda dos dimensiones basura — `{"Name": "Name", "Value": "FunctionName"}` y `{"Name": "Value", "Value": "quiz-avanzado-categories"}` — en vez de la única dimensión esperada. Se confirmó reproduciéndolo dos veces.
+  - La forma que sí funciona es la sintaxis JSON completa con `--metric-data` (ver paso 11 de la verificación).
+  - Esto **no** afecta a las 6 Lambdas del proyecto: publican con el SDK de JavaScript, no con `aws-cli`, y ahí las dimensiones siempre se vieron correctas (confirmado en el paso 7).
+  - Por las dudas, se **repitió la prueba del hallazgo anterior con datos garantizados correctos** (una alarma sobre `Invocations`, poblada por una invocación real de la app en vez de `put-metric-data` a mano): mismo resultado, `INSUFFICIENT_DATA` después de 2 minutos. El hallazgo de que la evaluación automática no ocurre queda confirmado independientemente de este bug de sintaxis.
+
+**Conclusión práctica:**
+
+En este entorno, Alarms sirve para **definir** alarmas y para **probar acciones** conectadas a ellas empujando el estado a mano con `set-alarm-state` — pero no sirve como vigilancia automática real de una métrica en producción, porque el motor que hace esa vigilancia periódica no está implementado.
+
+La alarma de prueba se creó, se verificó y se borró en el mismo momento (no quedó como parte permanente de la infraestructura de este proyecto). Cuando en la Fase 5 exista SNS, se construye ahí la alarma real con una acción de notificación con propósito de negocio, reutilizando lo aprendido acá.
 
 ### 2.8 Cómo verificarlo tú mismo
 
@@ -213,7 +330,9 @@ Antes de los pasos, así se conecta todo el circuito de punta a punta — desde 
 
 ![Trazabilidad: del código a la respuesta del comando](./imgs/AWS-FLOCI%20-%20Trazabilidad%20codigo%20a%20respuesta.png)
 
-El `message` que aparece en la respuesta del paso 4 no es un dato que CloudWatch "inventa" ni transforma — es, carácter por carácter, el string que `lambda/categories/index.js:23` le pasó a `console.log`. Tener claro este circuito completo (path del archivo → línea de código → comando → estructura de la respuesta) es lo que permite, ante cualquier otro mensaje que aparezca en logs a futuro, ir directo al `grep` en el código en vez de adivinar de dónde salió.
+El `message` que aparece en la respuesta del paso 4 no es un dato que CloudWatch "inventa" ni transforma — es, carácter por carácter, el string que `lambda/categories/index.js:23` le pasó a `console.log`.
+
+Tener claro este circuito completo (path del archivo → línea de código → comando → estructura de la respuesta) es lo que permite, ante cualquier otro mensaje que aparezca en logs a futuro, ir directo al `grep` en el código en vez de adivinar de dónde salió.
 
 **Método A — CloudWatch (portátil, funciona igual contra AWS real):**
 
@@ -526,9 +645,11 @@ Hasta ahora, la contraseña de la base de datos vive en texto plano en la config
 
 **AWS KMS (Key Management Service)** es el servicio que genera y administra las claves de cifrado que usan Secrets Manager (y muchos otros servicios) por debajo. Por defecto, Secrets Manager usa una clave administrada por AWS; se puede usar una clave propia (*customer-managed key*) para tener control sobre quién puede usarla y poder revocarla independientemente.
 
-### Un cambio de fondo: roles con permisos reales
+### Un permiso real más: lectura de secretos
 
-Hasta ahora, cada rol IAM de este proyecto (`quiz-categories-role`, etc.) solo tiene una **trust policy** (quién puede *asumir* el rol — en este caso, el servicio Lambda) pero **ninguna política de permisos** (qué puede *hacer* una vez asumido el rol). Floci no lo exige para que la Lambda pueda leer/escribir en RDS o S3. Esta fase es la primera vez que un rol necesita un permiso real adjunto (`secretsmanager:GetSecretValue`) — una buena oportunidad para entender la diferencia entre ambos conceptos.
+Desde la Fase 2 (ver [sección 2.5](#25-cómo-funciona-en-este-proyecto-quiz-avanzado)), los roles IAM de este proyecto (`quiz-avanzado-categories-role`, etc.) ya no son solo *trust policy* — cada uno tiene además una *permission policy* real (`cloudwatch:PutMetricData`).
+
+Esta fase repite ese mismo patrón con un permiso distinto (`secretsmanager:GetSecretValue`), y es una buena oportunidad para reforzar la diferencia entre ambos conceptos con un segundo ejemplo — esta vez de **lectura** en vez de **escritura**.
 
 ### Cómo quedó implementado
 
