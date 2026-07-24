@@ -1,0 +1,31 @@
+direction: right
+
+codigo: "lambda/categories/index.js:23\n\nconsole.log(\n  \"categories: listando categorias\"\n);" {
+  style.font: mono
+  style.fill: "#1e293b"
+  style.font-color: "#e2e8f0"
+  style.stroke: "#334155"
+}
+
+logs: "CloudWatch Logs\n/aws/lambda/quiz-avanzado-categories" {
+  icon: https://icons.terrastruct.com/aws%2FManagement%20%26%20Governance%2FAmazon-CloudWatch_light-bg.svg
+  shape: image
+}
+
+comando: "Comando (paso 4)\n\naws logs get-log-events \\\n  --log-group-name /aws/lambda/quiz-avanzado-categories \\\n  --log-stream-name '<stream>' --profile floci" {
+  style.font: mono
+  style.fill: "#1e293b"
+  style.font-color: "#e2e8f0"
+  style.stroke: "#334155"
+}
+
+respuesta: "Respuesta (recortada)\n\n{\n  \"events\": [\n    { \"message\":\n      \"...categories: listando categorias\" }\n  ]\n}" {
+  style.font: mono
+  style.fill: "#1e293b"
+  style.font-color: "#e2e8f0"
+  style.stroke: "#334155"
+}
+
+codigo -> logs: "se ejecuta al invocar\nla Lambda (Floci lo reenvía)"
+logs -> comando: "tú consultas con"
+comando -> respuesta: "devuelve"

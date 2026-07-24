@@ -209,6 +209,12 @@ Requiere el túnel SSH activo (`systemctl status floci-tunnel.service`) y el per
 
 Cada paso incluye la salida real que devolvió al ejecutarlo contra `quiz-avanzado`, qué campos vale la pena mirar, y una línea de sintaxis para los flags que no se explican solos.
 
+Antes de los pasos, así se conecta todo el circuito de punta a punta — desde la línea de código hasta la respuesta del comando que la verifica:
+
+![Trazabilidad: del código a la respuesta del comando](./imgs/AWS-FLOCI%20-%20Trazabilidad%20codigo%20a%20respuesta.png)
+
+El `message` que aparece en la respuesta del paso 4 no es un dato que CloudWatch "inventa" ni transforma — es, carácter por carácter, el string que `lambda/categories/index.js:23` le pasó a `console.log`. Tener claro este circuito completo (path del archivo → línea de código → comando → estructura de la respuesta) es lo que permite, ante cualquier otro mensaje que aparezca en logs a futuro, ir directo al `grep` en el código en vez de adivinar de dónde salió.
+
 **Método A — CloudWatch (portátil, funciona igual contra AWS real):**
 
 1. **Generar una invocación real** (cualquiera de las 6 rutas sirve; esta usa `categories`, la más simple):
@@ -447,13 +453,66 @@ Cada paso incluye la salida real que devolvió al ejecutarlo contra `quiz-avanza
 
 ### 2.9 Qué cambió en el código
 
-Cada una de las 6 Lambdas (`lambda/{categories,questions,answer,submit,ranking,badges}/index.js`) ganó tres cosas:
+Cada una de las 6 Lambdas (`lambda/{categories,questions,answer,submit,ranking,badges}/index.js`) ganó tres cosas. Los fragmentos de abajo son el código real de `lambda/categories/index.js` (la más simple de las 6) — las otras cinco tienen exactamente la misma estructura, cambiando solo el mensaje del log y qué parámetro de negocio miden (`categoria`, `username`, etc.).
 
-1. Un `console.log` al entrar al handler (con el parámetro relevante, ej. `categoria` o `username`) y un `console.error` en el bloque `catch` existente (antes, el error solo se devolvía al cliente en la respuesta HTTP, nunca quedaba registrado del lado del servidor). No requirió ninguna dependencia nueva — el runtime `nodejs22.x` ya expone `console` globalmente, y Floci se encarga de reenviarlo a CloudWatch por sí solo.
-2. Una función `publicarMetricas(errores, duracionMs)`, repetida en cada archivo (igual que ya pasa con el helper `respond()` — cada Lambda es independiente, sin librería compartida), que llama a `PutMetricDataCommand` del paquete `@aws-sdk/client-cloudwatch`. Se agregó como dependencia real (`npm install @aws-sdk/client-cloudwatch`) porque el runtime `nodejs22.x` de Floci **no** trae ningún cliente de `@aws-sdk` preinstalado (se confirmó intentando `require.resolve` dentro del contenedor real de una Lambda — falló también para `@aws-sdk/client-s3`) — queda respondida la pregunta que el plan original dejaba abierta para la Fase 3.
-3. La medición se inserta justo antes del `return respond(200, ...)` de éxito y dentro del bloque `catch`, usando el mismo punto de partida (`Date.now()`) que ya marcaba el `console.log` — así la duración medida es "tiempo de trabajo real" (consultas a la base de datos), no incluye la conexión inicial ni el *cold start* de la Lambda.
+**1. Logging — un `console.log` al entrar, un `console.error` en el `catch`.** No requirió ninguna dependencia nueva: el runtime `nodejs22.x` ya expone `console` globalmente, y Floci se encarga de reenviarlo a CloudWatch por sí solo (Hallazgo 1).
 
-Además, cada uno de los 6 roles IAM (`quiz-avanzado-<función>-role`) recibió una política inline nueva, `PublishCloudWatchMetrics`, con el único permiso `cloudwatch:PutMetricData` sobre `Resource: "*"` (es el único *scope* que CloudWatch acepta para esta acción, también en AWS real — no admite restringir por recurso).
+```js
+exports.handler = async () => {
+  console.log("categories: listando categorias");   // ← nuevo
+  const inicio = Date.now();                          // ← nuevo (también lo usan las métricas)
+  const client = new Client();
+  await client.connect();
+  try {
+    const { rows } = await client.query(`...`);
+    // ...
+  } catch (err) {
+    console.error("categories: error consultando categorias", err);   // ← nuevo
+    // ...
+  }
+};
+```
+
+**2. Métricas — una función `publicarMetricas`, repetida en cada archivo** (igual que ya pasa con el helper `respond()` — cada Lambda es independiente, sin librería compartida), que llama a `PutMetricDataCommand` del paquete `@aws-sdk/client-cloudwatch`:
+
+```js
+const { CloudWatchClient, PutMetricDataCommand } = require("@aws-sdk/client-cloudwatch");
+
+const cw = new CloudWatchClient({});
+const FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+async function publicarMetricas(errores, duracionMs) {
+  try {
+    await cw.send(new PutMetricDataCommand({
+      Namespace: "QuizAvanzado/Lambda",
+      MetricData: [
+        { MetricName: "Invocations", Value: 1, Unit: "Count", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+        { MetricName: "Errors", Value: errores, Unit: "Count", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+        { MetricName: "Duration", Value: duracionMs, Unit: "Milliseconds", Dimensions: [{ Name: "FunctionName", Value: FUNCTION_NAME }] },
+      ],
+    }));
+  } catch (err) {
+    console.error(`${FUNCTION_NAME}: no se pudo publicar metricas en CloudWatch`, err);
+  }
+}
+```
+
+Se agregó como dependencia real (`npm install @aws-sdk/client-cloudwatch`) porque el runtime `nodejs22.x` de Floci **no** trae ningún cliente de `@aws-sdk` preinstalado (se confirmó intentando `require.resolve` dentro del contenedor real de una Lambda — falló también para `@aws-sdk/client-s3`) — queda respondida la pregunta que el plan original dejaba abierta para la Fase 3.
+
+**3. La llamada a `publicarMetricas`, en los dos únicos lugares donde el handler termina** (éxito y error), reusando el mismo `inicio` que ya marcaba el `console.log`:
+
+```js
+    await publicarMetricas(0, Date.now() - inicio);   // ← nuevo, justo antes del éxito
+    return respond(200, rows);
+  } catch (err) {
+    console.error("categories: error consultando categorias", err);
+    await publicarMetricas(1, Date.now() - inicio);   // ← nuevo, dentro del catch
+    return respond(500, { error: err.message });
+```
+
+Así, la duración medida es "tiempo de trabajo real" (la consulta a la base de datos), sin incluir la conexión inicial ni el *cold start* de la Lambda.
+
+Además, cada uno de los 6 roles IAM (`quiz-avanzado-<función>-role`) recibió una política inline nueva, `PublishCloudWatchMetrics`, con el único permiso `cloudwatch:PutMetricData` sobre `Resource: "*"` (es el único *scope* que CloudWatch acepta para esta acción, también en AWS real — no admite restringir por recurso; ver diagramas de la sección 2.5).
 
 ---
 
